@@ -962,6 +962,28 @@ class StrategyEngine:
             }, subject=intent.symbol, severity=SEV_ERROR)
             return None
 
+        # ---- US-P2-C 阶段 B：提交闸门 ----
+        # 意图（阶段 A）已经放行，但"允许退出意图"≠"订单可正常执行"。
+        # 已确认停牌 / LULD 暂停 / MWCB 暂停时不得把订单发给券商。
+        _ms = getattr(self.risk, "market_status", None)
+        if getattr(self.risk, "phase2_enabled", False) and _ms is not None:
+            _now_aware = datetime.now().astimezone()
+            _sub = _ms.submit_gate(intent.symbol, is_exit=bool(intent.is_exit),
+                                   now=_now_aware)
+            if not _sub.allowed:
+                self._jlog("order_submit_blocked", {
+                    "symbol": intent.symbol, "side": intent.side,
+                    "qty": float(decision.approved_qty), "client_id": client_id,
+                    "state": _sub.state.value, "reason": _sub.reason,
+                    "warning": _sub.warning,
+                    "detail": "市场暂停/不可确认：退出意图已保留，未向券商提交",
+                }, subject=intent.symbol, severity=SEV_WARN)
+                self._jupdate_intent(client_id, INTENT_STATE_REJECTED,
+                                     broker_status="submit_blocked",
+                                     last_error=_sub.reason)
+                self._release_attempt(decision.decision_id)
+                return None
+
         try:
             result = self.broker.place_order(req)
         except OrderStateUnknown as exc:

@@ -128,7 +128,7 @@ def test_low_price_band_is_absolute_dollars():
 def test_mwcb_l1_before_325_halts():
     svc = MarketStatusService()
     svc.update_index(5000.0, T0)
-    assert svc.update_index(4650.0, T0) == 1
+    assert svc.update_index(4650.0, T0, at_or_after_325=False) == 1
     assert svc.status("AAPL", now=T0).state is MarketState.MWCB_PAUSED
 
 

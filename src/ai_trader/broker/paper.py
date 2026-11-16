@@ -181,6 +181,7 @@ class PaperBroker(Broker):
         allow_partial_fill: bool = True,
         allow_short: bool = False,
         settlement: Any = None,
+        market_status: Any = None,
     ):
         self.state_path = Path(state_path)
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
@@ -193,6 +194,8 @@ class PaperBroker(Broker):
         self.allow_short = bool(allow_short)
         #: US-P2-E：可选的 T+1 结算账本。成交后自动入账，形成"撮合 → 账本"闭环。
         self.settlement = settlement
+        #: US-P2-C 阶段 C：市场状态。暂停期间**不得产生成交**。
+        self.market_status = market_status
         self.quote_source = quote_source or SyntheticQuoteSource()
         self._lock = threading.RLock()
         self._state = self._load()
@@ -423,6 +426,20 @@ class PaperBroker(Broker):
                     # US-P2-D：模拟盘卖空。真实盘由 ShortGuard + 人工批准另行把关。
                     self._record_short_borrow(sym, qty - held, currency)
 
+            # ---- US-P2-C 阶段 C：成交闸门 ----
+            # 市场暂停期间**不得伪造成交**；订单保留为 submitted，等恢复后再处理。
+            market_note = ""
+            if status == "filled" and self.market_status is not None:
+                try:
+                    _ok, _why, _mstate = self.market_status.fill_allowed(sym)
+                except Exception as exc:      # 状态不可查 → 同样不成交（fail-closed）
+                    _ok, _why, _mstate = False, f"市场状态不可查：{exc}", None
+                if not _ok:
+                    status = "submitted"
+                    fill_qty = 0.0
+                    exec_price = None
+                    market_note = _why
+
             if status == "filled":
                 self._apply_fill(sym, market, currency, req.side, fill_qty, exec_price, commission)
                 # US-P2-E：成交即入账（买卖都记），账本按交易日历推进 T+1。
@@ -460,6 +477,7 @@ class PaperBroker(Broker):
                 "stop_loss": req.stop_loss,
                 "take_profit": req.take_profit,
                 "client_id": req.client_id or order_id,
+                "market_note": market_note,
             }
             self._state["orders"][order_id] = order
             self._save()

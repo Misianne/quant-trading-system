@@ -245,7 +245,7 @@ def test_halt_blocks_entry_but_not_exit():
     svc.halt_symbol("AAPL", HaltReason.NEWS_PENDING, note="news")
     assert svc.evaluate("AAPL").allowed is False
     exit_d = svc.evaluate("AAPL", is_exit=True)
-    assert exit_d.allowed is True and "风险退出" in exit_d.warning
+    assert exit_d.allowed is True and "退出意图" in exit_d.warning
 
 
 def test_luld_trigger_and_recover():
@@ -288,11 +288,11 @@ def test_mwcb_levels_and_l3_close():
     svc = MarketStatusService()
     now = datetime.now(timezone.utc)
     svc.update_index(5000.0, now)
-    assert svc.update_index(4650.0, now) == 1          # -7%
+    assert svc.update_index(4650.0, now, at_or_after_325=False) == 1   # -7%，未进入截止窗口
     assert svc.mwcb_status()["level"] == 1
     assert svc.status("AAPL", now=now).state is MarketState.MWCB_PAUSED
     # 跳到 -20%
-    assert svc.update_index(4000.0, now) == 3
+    assert svc.update_index(4000.0, now, at_or_after_325=False) == 3
     assert svc.status("AAPL", now=now).state is MarketState.MWCB_CLOSED
     assert svc.evaluate("AAPL", is_exit=True).allowed is True
 

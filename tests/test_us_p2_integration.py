@@ -107,7 +107,7 @@ def test_market_status_does_not_block_exit(tmp_path):
                       _pf(qty=10), last_price=100.0, recent_orders=[])
     c = _check(d, "market_status")
     assert c is not None and c.ok is True      # 放行，但带告警
-    assert any("风险退出" in w for w in d.warnings)
+    assert any("退出意图" in w for w in d.warnings)
 
 
 def test_market_status_missing_component_fails_closed(tmp_path):
