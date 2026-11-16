@@ -969,7 +969,7 @@ class StrategyEngine:
         if getattr(self.risk, "phase2_enabled", False) and _ms is not None:
             _now_aware = datetime.now().astimezone()
             _sub = _ms.submit_gate(intent.symbol, is_exit=bool(intent.is_exit),
-                                   now=_now_aware)
+                                   now=_now_aware, price=intent.price)
             if not _sub.allowed:
                 self._jlog("order_submit_blocked", {
                     "symbol": intent.symbol, "side": intent.side,

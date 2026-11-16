@@ -30,6 +30,20 @@ NY = ZoneInfo("America/New_York")
 T0 = datetime(2026, 11, 16, 10, 0, tzinfo=NY)
 
 
+
+# ---- 恢复必须走权威校验层（本轮新增）------------------------------------ #
+def resume(lc, ts, *, provider="test.exchange-sim", version=None, **over):
+    from ai_trader.market.luld_authority import make_resume_event, test_authority
+    auth = getattr(lc, "_auth", None)
+    if auth is None:
+        auth = test_authority()
+        lc._auth = auth
+    ev = make_resume_event(lc, provider=provider, ts=ts,
+                           event_version=version if version is not None else lc.version + 1,
+                           **over)
+    return lc.on_official_resume(ev, auth, now=ts)
+
+
 def band(ref: float = 100.0, pct: float = 0.05,
          eff: datetime = T0) -> PriceBandState:
     return PriceBandState(symbol="AAPL", reference_price=ref,
@@ -71,8 +85,7 @@ def test_full_happy_path_nasdaq():
                                 indicative_price=100.0) is LuldPhase.RESUME_PENDING
     assert lc.tradable is False
     # 官方恢复 → REOPENED
-    assert lc.on_official_resume(t + timedelta(minutes=7), version=99,
-                                 source="exchange") is LuldPhase.REOPENED
+    assert resume(lc, t + timedelta(minutes=7), version=99) is LuldPhase.REOPENED
     assert lc.tradable is True
 
 
@@ -82,7 +95,7 @@ def test_full_happy_path_nyse():
     assert lc.start_auction(t + timedelta(minutes=5, seconds=1)) is LuldPhase.REOPENING_AUCTION
     assert lc.on_auction_update(t + timedelta(minutes=6), version=2,
                                 indicative_price=100.0) is LuldPhase.RESUME_PENDING
-    assert lc.on_official_resume(t + timedelta(minutes=7), version=50) is LuldPhase.REOPENED
+    assert resume(lc, t + timedelta(minutes=7), version=50) is LuldPhase.REOPENED
 
 
 def test_limit_state_before_pause_is_not_tradable_break():
@@ -171,9 +184,9 @@ def test_counter_stale_resume_ignored():
     t = to_pause(lc)
     lc.start_auction(t + timedelta(minutes=5, seconds=1))
     lc.on_auction_update(t + timedelta(minutes=6), version=2, indicative_price=100.0)
-    lc.on_official_resume(t + timedelta(minutes=7), version=100)
+    resume(lc, t + timedelta(minutes=7), version=100)
     ver = lc.version
-    lc.on_official_resume(t + timedelta(minutes=8), version=1)     # 旧版本
+    resume(lc, t + timedelta(minutes=8), version=1)     # 旧版本
     assert lc.phase is LuldPhase.REOPENED and lc.version == ver
 
 
@@ -194,7 +207,7 @@ def test_counter_new_pause_after_resume_is_honoured():
     t = to_pause(lc)
     lc.start_auction(t + timedelta(minutes=5, seconds=1))
     lc.on_auction_update(t + timedelta(minutes=6), version=2, indicative_price=100.0)
-    lc.on_official_resume(t + timedelta(minutes=7), version=100)
+    resume(lc, t + timedelta(minutes=7), version=100)
     assert lc.phase is LuldPhase.REOPENED
     # 新一次 Limit State → 暂停
     lc.on_trade(80.0, t + timedelta(minutes=8), in_regular=True)
@@ -212,8 +225,8 @@ def test_counter_data_unavailable_never_resumes():
     lc.data_unavailable(t + timedelta(minutes=1), "feed down")
     assert lc.phase is LuldPhase.DATA_UNAVAILABLE
     assert lc.tradable is False
-    lc.on_official_resume(t + timedelta(hours=1), version=999)
-    assert lc.phase is LuldPhase.INVALID_EVENT     # 非 RESUME_PENDING 不接受恢复
+    assert resume(lc, t + timedelta(hours=1), version=999) is LuldPhase.DATA_UNAVAILABLE
+    assert any(e.kind == "resume_ignored" for e in lc.events)
 
 
 def test_counter_unknown_auction_never_reopened():
@@ -261,7 +274,7 @@ def test_counter_two_exchanges_independent():
     ta, tb = to_pause(a), to_pause(b)
     a.start_auction(ta + timedelta(minutes=5, seconds=1))
     a.on_auction_update(ta + timedelta(minutes=6), version=2, indicative_price=100.0)
-    a.on_official_resume(ta + timedelta(minutes=7), version=100)
+    resume(a, ta + timedelta(minutes=7), version=100)
     assert a.tradable is True
     assert b.phase is LuldPhase.TRADING_PAUSE and b.tradable is False
 

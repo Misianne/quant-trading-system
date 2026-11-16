@@ -210,6 +210,9 @@ class TradingPause:
     source: str = ""
     version: int = 0
     auction_status: AuctionStatus = AuctionStatus.WAITING_FOR_AUCTION
+    #: 与恢复事件绑定的唯一 ID（跨证券/跨交易所/跨交易日不可复用）
+    pause_event_id: str = ""
+    trading_date: str = ""
 
     @property
     def minimum_elapsed(self) -> bool:
@@ -247,6 +250,7 @@ class AuctionState:
     status: AuctionStatus = AuctionStatus.NOT_STARTED
     #: 竞价参考价（Nasdaq: 触发暂停那一侧的价格带；NYSE: 同义）
     auction_reference_price: float = 0.0
+    trading_date: str = ""
 
     def as_dict(self) -> Dict[str, Any]:
         return {"symbol": self.symbol, "exchange": self.exchange.value,
@@ -509,7 +513,10 @@ class LuldLifecycle:
                                       reference_price=self.limit.band.reference_price,
                                       band=self.limit.band,
                                       version=self.version + 1,
-                                      auction_status=AuctionStatus.AUCTION_CANCELLED)
+                                      auction_status=AuctionStatus.AUCTION_CANCELLED,
+                                      pause_event_id=f"{self.exchange.value}-{self.symbol}-"
+                                                     f"{ts.isoformat()}-close-cutoff",
+                                      trading_date=ts.date().isoformat())
             self._bump("trading_pause_close_cutoff", LuldPhase.TRADING_PAUSE, ts,
                        note="收市前 10 分钟内进入暂停：不恢复连续交易，转收盘竞价")
             return self.phase
@@ -520,7 +527,11 @@ class LuldLifecycle:
                                   pause_reason=f"luld_{side}",
                                   reference_price=self.limit.band.reference_price,
                                   band=self.limit.band,
-                                  version=self.version + 1)
+                                  version=self.version + 1,
+                                  pause_event_id=f"{self.exchange.value}-{self.symbol}-"
+                                                 f"{ts.isoformat()}-luld",
+                                  trading_date=ts.date().isoformat())
+        self.auction.trading_date = ts.date().isoformat()
         self.auction.status = AuctionStatus.WAITING_FOR_AUCTION
         self.auction.auction_started_at = ts
         self._bump("trading_pause_start", LuldPhase.TRADING_PAUSE, ts,
@@ -626,27 +637,54 @@ class LuldLifecycle:
     # ------------------------------------------------------------------ #
     # 官方恢复
     # ------------------------------------------------------------------ #
-    def on_official_resume(self, ts: datetime, *, version: int, source: str = "",
-                           halt_cleared: bool = False) -> LuldPhase:
-        """交易所官方恢复状态 —— **唯一**能让标的回到可交易状态的入口。"""
-        if version <= self.version and not halt_cleared:
-            self.events.append(LuldEvent(ts=ts, kind="stale_resume_ignored",
-                                         phase=self.phase, version=self.version,
-                                         note=f"version {version} ≤ {self.version}"))
+    def on_official_resume(self, event: Any, authority: Any, *,
+                           now: Optional[datetime] = None) -> LuldPhase:
+        """**唯一**的恢复入口：必须先通过 :class:`ResumeAuthority` 校验。
+
+        校验失败 → 保持当前（不可交易）状态，并记录拒绝原因（可审计）。
+        """
+        from .luld_authority import ResumeRejected
+
+        ts = event.event_ts
+        if self.phase is not LuldPhase.RESUME_PENDING:
+            # 非待恢复状态收到恢复事件：**只记录、不改状态**（避免杂散事件污染状态机）
+            self.events.append(LuldEvent(
+                ts=ts, kind="resume_ignored", phase=self.phase,
+                version=self.version,
+                note=f"{self.phase.value} 不接受恢复事件",
+                source=getattr(event, "provider", "")))
             return self.phase
-        if self.phase is LuldPhase.RESUME_PENDING:
-            self.auction.status = AuctionStatus.REOPENED
-            self.auction.official_resume_at = ts
-            self.pause = None
-            self.limit = None
-            self._bump("official_resume", LuldPhase.REOPENED, ts, source=source,
-                       note="收到官方恢复状态，恢复连续交易")
+
+        pause = self.pause
+        auction_id = self.auction.auction_id
+        try:
+            authority.verify(
+                event,
+                symbol=self.symbol,
+                exchange=self.exchange.value,
+                trading_date=getattr(pause, "trading_date", "") if pause else "",
+                pause_event_id=getattr(pause, "pause_event_id", "") if pause else "",
+                auction_id=auction_id,
+                now=now,
+            )
+        except ResumeRejected as exc:
+            self.events.append(LuldEvent(
+                ts=ts, kind="resume_rejected", phase=self.phase,
+                version=self.version,
+                note=f"[{exc.code}] {exc.message}",
+                source=getattr(event, "provider", "")))
             return self.phase
-        self._bump("invalid_event", LuldPhase.INVALID_EVENT, ts,
-                   note=f"{self.phase.value} 不接受官方恢复")
+
+        # 通过校验 → 应用恢复
+        self.auction.status = AuctionStatus.REOPENED
+        self.auction.official_resume_at = ts
+        self.pause = None
+        self.limit = None
+        self._bump("official_resume", LuldPhase.REOPENED, ts,
+                   source=getattr(event, "provider", ""),
+                   note="权威恢复事件通过校验，恢复连续交易")
         return self.phase
 
-    # ------------------------------------------------------------------ #
     def data_unavailable(self, ts: datetime, note: str) -> LuldPhase:
         self._bump("data_unavailable", LuldPhase.DATA_UNAVAILABLE, ts, note=note)
         return self.phase

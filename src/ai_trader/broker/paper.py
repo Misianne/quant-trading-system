@@ -431,7 +431,9 @@ class PaperBroker(Broker):
             market_note = ""
             if status == "filled" and self.market_status is not None:
                 try:
-                    _ok, _why, _mstate = self.market_status.fill_allowed(sym)
+                    # 传入**成交价**：Limit State 期间只有带内价格才允许成交
+                    _ok, _why, _mstate = self.market_status.fill_allowed(
+                        sym, price=float(exec_price or ref_price))
                 except Exception as exc:      # 状态不可查 → 同样不成交（fail-closed）
                     _ok, _why, _mstate = False, f"市场状态不可查：{exc}", None
                 if not _ok:

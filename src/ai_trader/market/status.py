@@ -19,7 +19,7 @@ LULD 只在 **9:30–16:00 ET 常规时段**计算；盘前/盘后/夜间一律 
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -312,6 +312,8 @@ class SymbolStatus:
     events: List[StatusEvent] = field(default_factory=list)
     #: LULD Limit State 起始时刻（15 秒判定用）
     limit_state_since: Optional[datetime] = None
+    #: 该状态属于哪个交易场所（多交易所隔离）
+    exchange: str = "*"
 
     @property
     def tradable(self) -> bool:
@@ -423,13 +425,101 @@ class MarketStatusService:
     # ------------------------------------------------------------------ #
     # 内部
     # ------------------------------------------------------------------ #
-    def _st(self, symbol: str) -> SymbolStatus:
-        sym = symbol.upper()
-        st = self._symbols.get(sym)
+    @staticmethod
+    def _key(symbol: str, exchange: str = "*") -> str:
+        """状态键 = symbol|exchange。
+
+        不同交易所**必须**各自维护状态：一家恢复不得影响另一家。
+        ``"*"`` 是"未指定交易所"的显式桶（兼容旧的单所调用）。
+        """
+        return f"{str(symbol).upper()}|{str(exchange or '*').lower()}"
+
+    def _st(self, symbol: str, exchange: str = "*") -> SymbolStatus:
+        k = self._key(symbol, exchange)
+        st = self._symbols.get(k)
         if st is None:
-            st = SymbolStatus(symbol=sym)
-            self._symbols[sym] = st
+            st = SymbolStatus(symbol=str(symbol).upper(), exchange=str(exchange).lower())
+            self._symbols[k] = st
         return st
+
+    #: 由**显式事件**写入的状态（停牌 / 暂停 / 竞价 / Limit State）。
+    #: 只有这些状态参与跨交易所桶聚合 —— 行情新鲜度是标的级（合并行情），不参与。
+    EVENT_STATES: Tuple[MarketState, ...] = (
+        MarketState.LULD_LIMIT_STATE,
+        MarketState.LULD_PAUSED,
+        MarketState.HALTED,
+        MarketState.MWCB_PAUSED,
+        MarketState.MWCB_CLOSED,
+    )
+
+    #: 状态严格度（越大越严）。用于"场所未知"时必须取最保守值。
+    SEVERITY: Dict[MarketState, int] = {
+        MarketState.OPEN: 0,
+        MarketState.LULD_LIMIT_STATE: 1,
+        MarketState.UNKNOWN: 2,
+        MarketState.DATA_STALE: 3,
+        MarketState.LULD_PAUSED: 4,
+        MarketState.HALTED: 5,
+        MarketState.MWCB_PAUSED: 6,
+        MarketState.MWCB_CLOSED: 7,
+    }
+
+    def _bucket_keys(self, symbol: str, exchange: str) -> List[str]:
+        """返回该查询应当参考的状态桶。
+
+        * ``exchange="*"``（**场所未知**）→ 该标的**所有**场所桶
+          理由：未知场所时无法排除任何一家交易所的停牌，必须保守。
+        * ``exchange="nasdaq"`` → 仅 ``sym|nasdaq`` + ``sym|*``
+          理由：``"*"`` 桶是**标的级**事实（不区分场所的停牌），对所有场所生效；
+          但**不得**参考其它具体场所（否则隔离失效）。
+        """
+        sym = str(symbol).upper()
+        ex = str(exchange or "*").lower()
+        prefix = f"{sym}|"
+        if ex == "*":
+            return [k for k in list(self._symbols) if k.startswith(prefix)]
+        keys = [self._key(sym, ex)]
+        star = self._key(sym, "*")
+        if star != keys[0]:
+            keys.append(star)
+        return keys
+
+    def _strictest_event(self, symbol: str, exchange: str,
+                         exclude_key: str) -> Optional[SymbolStatus]:
+        """找出比本单位更严格的**显式事件**状态；没有则返回 ``None``。"""
+        worst: Optional[SymbolStatus] = None
+        for k in self._bucket_keys(symbol, exchange):
+            if k == exclude_key:
+                continue
+            cand = self._symbols.get(k)
+            if cand is None or cand.state not in self.EVENT_STATES:
+                continue
+            if worst is None or self.SEVERITY[cand.state] > self.SEVERITY[worst.state]:
+                worst = cand
+        return worst
+
+    def _fuse(self, st: SymbolStatus, symbol: str, exchange: str) -> SymbolStatus:
+        """把更严格的跨桶事件状态叠加到查询结果上（返回副本，不改存储对象）。
+
+        **安全方向**：聚合只会让结果更严，绝不会把已停牌的标的"放宽"成可交易。
+        """
+        worst = self._strictest_event(symbol, exchange, self._key(symbol, exchange))
+        if worst is None or self.SEVERITY[worst.state] <= self.SEVERITY[st.state]:
+            return st
+        out = replace(st)
+        out.state = worst.state
+        out.reason = worst.reason
+        out.kind = worst.kind
+        out.halted_at = worst.halted_at
+        out.expected_resume_at = worst.expected_resume_at
+        out.recovery_notice_at = worst.recovery_notice_at
+        out.limit_state_since = worst.limit_state_since
+        if out.band is None and worst.band is not None:
+            out.band = worst.band
+        src = worst.exchange or "*"
+        out.note = (f"{worst.state.value} 来自场所 {src}（查询场所 "
+                    f"{str(exchange or '*').lower()}）；{worst.note or ''}").strip()
+        return out
 
     def _emit(self, st: SymbolStatus, kind: HaltKind, state: MarketState,
               ts: datetime, *, source: str = "", note: str = "",
@@ -548,7 +638,8 @@ class MarketStatusService:
     def observe_trade(self, symbol: str, price: float, ts: datetime, *,
                       bounds: Optional[DayBounds],
                       prior_close: Optional[float] = None,
-                      source: str = "") -> LULDResult:
+                      source: str = "",
+                      exchange: str = "*") -> LULDResult:
         """官方 LULD 计算入口。
 
         要求 ``bounds``（真实交易日开收盘）与 ``prior_close``；缺任何一项都返回
@@ -566,7 +657,8 @@ class MarketStatusService:
                               note="缺少交易日边界，无法判断是否常规时段")
         if not bounds.in_regular(ts):
             return LULDResult(LULDAvailability.OUT_OF_SESSION,
-                              state=self._st(sym).state if self._st(sym).state != MarketState.UNKNOWN
+                              state=self._st(sym, exchange).state
+                              if self._st(sym, exchange).state != MarketState.UNKNOWN
                               else MarketState.OPEN,
                               note=f"{ts.isoformat()} 不在常规交易时段（LULD 不适用）")
         if prior_close is None or prior_close <= 0:
@@ -591,7 +683,7 @@ class MarketStatusService:
                                   prior_close=prior_close, reason=why)
         self._bands[sym] = band
 
-        st = self._st(sym)
+        st = self._st(sym, exchange)
         st.band = band
         inside = band.contains(float(price))
 
@@ -650,7 +742,8 @@ class MarketStatusService:
 
     def on_quote(self, symbol: str, price: float, ts: datetime,
                  *, doubled: bool = False, prior_close: Optional[float] = None,
-                 in_open_close_window: Optional[bool] = None
+                 in_open_close_window: Optional[bool] = None,
+                 exchange: str = "*"
                  ) -> Optional[LULDBand]:
         """回放/测试用的简化入口（**假定调用方已确认在常规时段**）。
 
@@ -660,7 +753,7 @@ class MarketStatusService:
             doubled = True
         sym = symbol.upper()
         self._last_trade[sym] = (float(price), ts)
-        st = self._st(sym)
+        st = self._st(sym, exchange)
         st.updated_at = ts
 
         band = self._bands.get(sym)
@@ -698,14 +791,15 @@ class MarketStatusService:
                     ts: Optional[datetime] = None,
                     resume_at: Optional[datetime] = None,
                     note: str = "", source: str = "exchange",
-                    kind: HaltKind = HaltKind.EXCHANGE) -> SymbolStatus:
+                    kind: HaltKind = HaltKind.EXCHANGE,
+                    exchange: str = "*") -> SymbolStatus:
         """记录一次停牌。
 
         **交易所停牌不会自动恢复**：``resume_at`` 只是"预计恢复"，仅用于展示；
         必须在收到恢复通知后调用 :meth:`notify_resume`。
         """
         sym = symbol.upper()
-        st = self._st(sym)
+        st = self._st(sym, exchange)
         now = ts or datetime.now(timezone.utc)
         self._emit(st, kind, MarketState.HALTED, now, source=source,
                    expected_resume_at=resume_at,
@@ -715,10 +809,11 @@ class MarketStatusService:
         return st
 
     def notify_resume(self, symbol: str, ts: Optional[datetime] = None,
-                      source: str = "exchange", note: str = "收到恢复通知") -> SymbolStatus:
+                      source: str = "exchange", note: str = "收到恢复通知",
+                      exchange: str = "*") -> SymbolStatus:
         """收到真实恢复通知 → 解除停牌（**唯一**解除交易所停牌的方式）。"""
         sym = symbol.upper()
-        st = self._st(sym)
+        st = self._st(sym, exchange)
         now = ts or datetime.now(timezone.utc)
         self._emit(st, HaltKind.EXCHANGE, MarketState.OPEN, now, source=source,
                    recovery_notice_at=now, note=note)
@@ -729,13 +824,14 @@ class MarketStatusService:
         self._breaches[sym] = 0
         return st
 
-    def record_trade(self, symbol: str, price: float, ts: datetime) -> None:
+    def record_trade(self, symbol: str, price: float, ts: datetime,
+                     *, exchange: str = "*") -> None:
         """仅登记"最近成交时间/价格"（用于新鲜度判定），不参与 LULD 计算。
 
         数据源在没有完整 LULD 输入（无 bounds / 无前收）时应调用它。
         """
         self._last_trade[symbol.upper()] = (float(price), ts)
-        st = self._st(symbol)
+        st = self._st(symbol, exchange)
         st.updated_at = ts
 
     #: 旧接口别名（语义同 notify_resume）
@@ -764,10 +860,17 @@ class MarketStatusService:
         lc = self.lifecycles.get(symbol.upper())
         return lc.phase.value if lc is not None else None
 
-    def status(self, symbol: str, now: Optional[datetime] = None) -> SymbolStatus:
+    def status(self, symbol: str, now: Optional[datetime] = None, *,
+               exchange: str = "*") -> SymbolStatus:
+        """查询状态。**先解析本单位，再叠加更严格的跨场所事件状态**。"""
         now = now or datetime.now(timezone.utc)
+        st = self._status_local(symbol, now, exchange=exchange)
+        return self._fuse(st, symbol, exchange)
+
+    def _status_local(self, symbol: str, now: datetime, *,
+                      exchange: str = "*") -> SymbolStatus:
         sym = symbol.upper()
-        st = self._st(sym)
+        st = self._st(sym, exchange)
 
         # 1) MWCB L3：当日关闭，永不自动恢复
         if self._mwcb.closed_for_day:
@@ -823,14 +926,33 @@ class MarketStatusService:
                     st.state = MarketState.DATA_STALE
                     st.note = (f"行情过期 {(now - ts).total_seconds():.0f}s > "
                                f"{self.max_quote_age:.0f}s")
+                elif st.state == MarketState.UNKNOWN:
+                    # 有**新鲜**行情且无停牌/暂停 → 正常可交易
+                    st.state = MarketState.OPEN
+                    st.note = ""
         return st
 
+    #: 允许**连续交易**的市场状态（LIMIT_STATE 也允许，但受价格带约束）
+    CONTINUOUS_OK = (MarketState.OPEN,)
+
+    def _lifecycle_ok(self, symbol: str, exchange: str) -> Tuple[bool, str]:
+        lc = self.lifecycles.get(str(symbol).upper())
+        if lc is None:
+            return True, ""
+        if not lc.tradable:
+            return False, f"LULD 生命周期={lc.phase.value}"
+        return True, ""
+
     def intent_gate(self, symbol: str, *, is_exit: bool = False,
-                    now: Optional[datetime] = None) -> MarketDecision:
+                    now: Optional[datetime] = None,
+                    exchange: str = "*") -> MarketDecision:
         """**阶段 A：意图**。风险退出不因市场状态被否掉，只带告警。"""
-        st = self.status(symbol, now)
+        st = self.status(symbol, now, exchange=exchange)
         if st.state == MarketState.OPEN:
             return MarketDecision(True, st.state, "", "", st.band, stage="intent")
+        if st.state == MarketState.LULD_LIMIT_STATE:
+            return MarketDecision(True, st.state, "", "标的处于 Limit State："
+                                  "仅允许价格带内成交", st.band, stage="intent")
         if is_exit:
             return MarketDecision(
                 True, st.state, "",
@@ -841,13 +963,41 @@ class MarketStatusService:
                               f"（{st.note or st.reason.value}）", "", st.band, stage="intent")
 
     def submit_gate(self, symbol: str, *, is_exit: bool = False,
-                    now: Optional[datetime] = None) -> MarketDecision:
-        """**阶段 B：提交**。暂停期间订单不得标记为"可正常执行"，退出亦然。"""
-        st = self.status(symbol, now)
+                    now: Optional[datetime] = None,
+                    exchange: str = "*",
+                    price: Optional[float] = None) -> MarketDecision:
+        """**阶段 B：提交**。
+
+        * ``OPEN`` → 允许
+        * ``LULD_LIMIT_STATE`` → 允许提交，但必须是**带内价格**（带外直接拒）
+        * 暂停/竞价/待恢复 → 拒绝（退出亦然）
+        """
+        st = self.status(symbol, now, exchange=exchange)
         if st.state == MarketState.OPEN:
+            ok, why = self._lifecycle_ok(symbol, exchange)
+            if not ok:
+                return MarketDecision(False, st.state,
+                                      f"{symbol} {why}，不可提交连续交易订单",
+                                      "", st.band, stage="submit")
             return MarketDecision(True, st.state, "", "", st.band, stage="submit")
+
+        if st.state == MarketState.LULD_LIMIT_STATE:
+            band = st.band
+            if price is None:
+                return MarketDecision(False, st.state,
+                                      f"{symbol} Limit State：缺少委托价，无法校验价格带",
+                                      "", band, stage="submit")
+            if band is not None and not band.contains(float(price)):
+                return MarketDecision(
+                    False, st.state,
+                    f"{symbol} Limit State：价格 {price} 越出带 "
+                    f"[{band.lower:.4f},{band.upper:.4f}]，拒绝",
+                    "", band, stage="submit")
+            return MarketDecision(True, st.state, "",
+                                  "Limit State：带内价格允许提交", band, stage="submit")
+
         if st.state in (MarketState.DATA_STALE, MarketState.UNKNOWN):
-            reason = (f"{symbol} 市场状态无法确认（{st.state.value}），不可路由订单")
+            reason = f"{symbol} 市场状态无法确认（{st.state.value}），不可路由订单"
         else:
             reason = f"{symbol} 处于 {st.state.value}，交易所不接受常规订单"
         if is_exit:
@@ -855,17 +1005,34 @@ class MarketStatusService:
                                   "退出意图已保留；待恢复后重新提交", st.band, stage="submit")
         return MarketDecision(False, st.state, reason, "", st.band, stage="submit")
 
-    def fill_allowed(self, symbol: str, now: Optional[datetime] = None
-                     ) -> Tuple[bool, str, MarketState]:
-        """**阶段 C：成交**。Paper 用它决定能不能真的产生成交。"""
-        st = self.status(symbol, now)
+    def fill_allowed(self, symbol: str, now: Optional[datetime] = None, *,
+                     price: Optional[float] = None,
+                     exchange: str = "*") -> Tuple[bool, str, MarketState]:
+        """**阶段 C：成交**（Paper Broker 自己再验一次，不依赖 Engine 事先检查）。
+
+        * ``OPEN`` → 还需行情新鲜 + 生命周期可交易
+        * ``LULD_LIMIT_STATE`` → 只允许**带内价格**成交
+        * 其它（暂停/竞价/待恢复/未知/过期）→ 一律不允许
+        """
+        st = self.status(symbol, now, exchange=exchange)
+
         if st.state == MarketState.OPEN:
-            lc = self.lifecycles.get(symbol.upper())
-            if lc is not None and not lc.tradable:
-                # 生命周期仍在竞价/待恢复：不允许连续成交
-                return (False, f"{symbol} LULD 生命周期={lc.phase.value}，"
-                               f"不允许连续交易成交", st.state)
+            ok, why = self._lifecycle_ok(symbol, exchange)
+            if not ok:
+                return False, f"{symbol} {why}，不允许连续交易成交", st.state
             return True, "", st.state
+
+        if st.state == MarketState.LULD_LIMIT_STATE:
+            band = st.band
+            if band is None:
+                return False, f"{symbol} Limit State 但无价格带，拒绝成交", st.state
+            if price is None:
+                return False, f"{symbol} Limit State：缺少成交价，无法校验价格带", st.state
+            if not band.contains(float(price)):
+                return False, (f"{symbol} Limit State：成交价 {price} 越出带 "
+                               f"[{band.lower:.4f},{band.upper:.4f}]，拒绝成交"), st.state
+            return True, "", st.state
+
         return False, f"{symbol} 处于 {st.state.value}，不允许成交（{st.note or '—'}）", st.state
 
     #: 兼容旧名
