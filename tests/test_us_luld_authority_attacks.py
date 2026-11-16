@@ -430,6 +430,29 @@ def test_fused_result_does_not_pollute_stored_state():
     assert svc.status("AAPL").state is MarketState.HALTED
 
 
+def test_limit_state_bucket_cannot_outlive_lifecycle_pause():
+    """状态桶停在 Limit State、生命周期已进入暂停 → 以生命周期为准，拒绝成交。
+
+    防的是"两套状态不同步时挑宽松的那套用"。
+    """
+    svc = MarketStatusService()
+    b = DayBounds(open_at=T0.replace(hour=9, minute=30),
+                  close_at=T0.replace(hour=16, minute=0))
+    t = T0 + timedelta(minutes=30)
+    for px in (100.0, 101.0, 100.5):
+        svc.reference.add("AAPL", Trade(px, t - timedelta(seconds=3)), in_regular=True)
+    svc.observe_trade("AAPL", 100.0, t - timedelta(seconds=2), bounds=b, prior_close=100.0)
+    assert svc.observe_trade("AAPL", 80.0, t, bounds=b,
+                             prior_close=100.0).state is MarketState.LULD_LIMIT_STATE
+
+    lc = svc.ensure_lifecycle("AAPL", exchange=Exchange.NASDAQ)
+    lc.start_auction(t + timedelta(seconds=1), source="test")
+    assert lc.tradable is False
+
+    ok, why, _ = svc.fill_allowed("AAPL", price=100.0)
+    assert ok is False and "生命周期" in why
+
+
 def test_authority_rejects_wrong_exchange_provider():
     auth = ResumeAuthority([
         ProviderSpec("test.nyse-only", ProviderKind.TEST, frozenset({"nyse"}),

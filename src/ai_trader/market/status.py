@@ -987,6 +987,12 @@ class MarketStatusService:
                 return MarketDecision(False, st.state,
                                       f"{symbol} Limit State：缺少委托价，无法校验价格带",
                                       "", band, stage="submit")
+            ok, why = self._lifecycle_ok(symbol, exchange)
+            if not ok:
+                return MarketDecision(False, st.state,
+                                      f"{symbol} {why}，不可提交（Limit State 状态桶与"
+                                      f"生命周期不一致时以生命周期为准）",
+                                      "", band, stage="submit")
             if band is not None and not band.contains(float(price)):
                 return MarketDecision(
                     False, st.state,
@@ -1028,6 +1034,10 @@ class MarketStatusService:
                 return False, f"{symbol} Limit State 但无价格带，拒绝成交", st.state
             if price is None:
                 return False, f"{symbol} Limit State：缺少成交价，无法校验价格带", st.state
+            ok, why = self._lifecycle_ok(symbol, exchange)
+            if not ok:
+                return False, (f"{symbol} {why}，Limit State 状态桶与生命周期不一致，"
+                               f"以生命周期为准，拒绝成交"), st.state
             if not band.contains(float(price)):
                 return False, (f"{symbol} Limit State：成交价 {price} 越出带 "
                                f"[{band.lower:.4f},{band.upper:.4f}]，拒绝成交"), st.state
