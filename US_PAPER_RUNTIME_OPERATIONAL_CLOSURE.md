@@ -504,7 +504,6 @@ scripts\paper_stop.ps1     # 先优雅（stop.request），超时才 -Force 并�
 | **UNVERIFIED** | Replay 行情是**合成路径**，不是历史成交 | 验证的是执行链路，不是策略在真实历史上的表现 |
 | **UNVERIFIED** | 竞价成交价/撮合优先级未建模 | 竞价阶段只能判"可/不可交易" |
 | **UNVERIFIED** | `_last_trade`/`_bands`/`lifecycles` 仍是 symbol 维度 | 同一标的多场所独立报价场景下隔离不完整 |
-| 已知限制 | 心跳 `ticks` 每轮重置 | 已补 `total_ticks/cycles_done` 累计字段供外部监控 |
 | 已知限制 | 本机执行策略禁止直接运行 `.ps1` | 已提供 `paper_start.cmd / paper_stop.cmd / paper_status.cmd` 包装（单次 `-ExecutionPolicy bypass`）；受会话工具限制，`.cmd` 路径只做了脚本语法解析验证，未实测点击运行 |
 | 已知限制 | **内存随轮次近似线性增长** | 30 分钟 1963 轮后 RSS 324.6 MB（约 0.17 MB/轮）。**不是句柄泄漏**（句柄稳定 179、线程 3、审计连接已关闭），判断为每轮重建运行体带来的对象/分配器保留。改善方向：复用运行体或每 N 轮重启进程；**本轮未实施**，以免验收数据与代码不一致 |
 | 已知限制 | Supervisor 与运行时同进程 | 进程被 `SIGKILL` 时 Supervisor 一起消失；失联由外部脚本判定 |
