@@ -101,8 +101,10 @@ def recover_only(scenario: Any, *, cfg: Any, out_dir: Path) -> Any:
 
 
 def cmd_status(cfg: Any, root: Path) -> int:
-    runs = sorted(root.glob("run-*"), key=lambda p: p.stat().st_mtime
-                  if p.exists() else 0)
+    # 递归查找（运行目录可能是 data/paper_runs/<批次>/run-soak-*）
+    runs = sorted((p for p in root.rglob("run-*") if p.is_dir()),
+                  key=lambda p: (p / "heartbeat.json").stat().st_mtime
+                  if (p / "heartbeat.json").exists() else p.stat().st_mtime)
     if not runs:
         print(f"没有运行记录：{root}")
         return 0
@@ -142,7 +144,7 @@ def cmd_replay(cfg: Any, args: argparse.Namespace, root: Path) -> int:
             if args.run_dir:
                 run_dir = Path(args.run_dir).resolve() / f"{key}-{n}"
             else:
-                run_dir = root / f"run-replay-{key}-{n}-{timebase.now():%Y%m%dT%H%M%S}"
+                run_dir = root / f"run-replay-{key}-{n}-{datetime.now():%Y%m%dT%H%M%S}"
             run_dir.mkdir(parents=True, exist_ok=True)
             if args.recover_only:
                 res = recover_only(SCENARIOS[key], cfg=cfg, out_dir=run_dir)
@@ -164,7 +166,7 @@ def cmd_replay(cfg: Any, args: argparse.Namespace, root: Path) -> int:
         elif len(digests) > 1:
             print(f"[deterministic] {key} ×{len(digests)} → {digests[0][:16]}")
 
-    out_path = root / f"replay-summary-{timebase.now():%Y%m%dT%H%M%S}.json"
+    out_path = root / f"replay-summary-{datetime.now():%Y%m%dT%H%M%S}.json"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps({"generated_at": timebase.now().isoformat(),
                                     "results": summary},
@@ -185,7 +187,7 @@ def cmd_soak(cfg: Any, args: argparse.Namespace, root: Path) -> int:
     keys = ["normal_day", "regular_session", "luld_limit_state",
             "luld_pause_resume", "mwcb", "premarket", "afterhours",
             "early_close", "holiday"]
-    run_dir = root / f"run-soak-{timebase.now():%Y%m%dT%H%M%S}"
+    run_dir = root / f"run-soak-{datetime.now():%Y%m%dT%H%M%S}"
     run_dir.mkdir(parents=True, exist_ok=True)
 
     sc = SCENARIOS[keys[0]]
@@ -217,7 +219,7 @@ def cmd_soak(cfg: Any, args: argparse.Namespace, root: Path) -> int:
         return _time.monotonic() >= deadline_mono
     cycles = 0
     fails = 0
-    started_at = timebase.now()
+    started_at = datetime.now()          # 运维标识用墙钟，不用回放时间
     try:
         # 先跑一轮 supervisor 预检
         pre = sup.preflight()
@@ -292,7 +294,8 @@ def cmd_soak(cfg: Any, args: argparse.Namespace, root: Path) -> int:
             end_state = rt.machine.state.value
             final = {"run_id": rt.run_id, "cycles": cycles, "fails": fails,
                      "started_at": started_at.isoformat(timespec="seconds"),
-                     "finished_at": timebase.now().isoformat(timespec="seconds"),
+                     "finished_at": datetime.now().isoformat(timespec="seconds"),
+                     "duration_seconds": round(_time.monotonic() - (deadline_mono - minutes * 60.0), 1),
                      "final_state": end_state,
                      "ticks": total_ticks, "fills": total_fills,
                      "cycles_log": cycles_log,

@@ -141,6 +141,7 @@ class HeartbeatWriter:
         self.path = Path(path)
         self.run_id = run_id
         self.seq = 0
+        self.write_failures = 0
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
     def beat(self, state: str, ticks: int, extra: Optional[Dict[str, Any]] = None) -> Heartbeat:
@@ -151,7 +152,27 @@ class HeartbeatWriter:
                        seq=self.seq, extra=dict(extra or {}))
         tmp = self.path.with_name(self.path.name + ".tmp")
         tmp.write_text(json.dumps(hb.as_dict(), ensure_ascii=False), encoding="utf-8")
-        os.replace(tmp, self.path)
+        # Windows：若外部（状态脚本/编辑器）正打开着 heartbeat.json，
+        # os.replace 会抛 PermissionError。心跳是**诊断信息**，
+        # 绝不能因为"有人在看状态"就把交易进程搞崩 —— 重试后放弃本次写入。
+        last: Optional[BaseException] = None
+        for attempt in range(4):
+            try:
+                os.replace(tmp, self.path)
+                return hb
+            except PermissionError as exc:      # 被占用
+                last = exc
+                time.sleep(0.02 * (attempt + 1))
+            except OSError as exc:               # 其它磁盘问题
+                last = exc
+                break
+        self.write_failures += 1
+        if self.write_failures == 1:
+            logger.warning("心跳写入被占用，已跳过本次（不会中断交易）：%s", last)
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
         return hb
 
 

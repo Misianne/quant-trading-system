@@ -1,4 +1,4 @@
-# 星财富 · 本地 Paper/Replay 状态检查
+﻿# 星财富 · 本地 Paper/Replay 状态检查
 #
 # 输出：进程是否在、心跳是否新鲜、最近一次运行报告摘要。
 # 判定：RUNNING（进程在 + 心跳新鲜）/ STALLED（进程在但心跳过期）/ DEAD（进程不在）
@@ -34,7 +34,7 @@ if (Test-Path $PidFile) {
     }
 }
 
-$runDirs = Get-ChildItem -Path $RunRoot -Directory -Filter "run-*" -ErrorAction SilentlyContinue |
+$runDirs = Get-ChildItem -Path $RunRoot -Directory -Filter "run-*" -Recurse -ErrorAction SilentlyContinue |
            Sort-Object LastWriteTime -Descending
 if ($runDirs -and $runDirs.Count -gt 0) {
     $latest = $runDirs[0]

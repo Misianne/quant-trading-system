@@ -1,0 +1,2 @@
+{"stop_requested": true, "detail": "requested_at=2026-11-16T16:35:55+08:00\n"}
+{"ok": true, "run_dir": "C:\\FosunAI-Trading\\data\\paper_runs\\stop-restart\\run-soak-20261116T163523", "cycles": 34, "ticks": 328, "fills": 20, "final_state": "RUNNING"}

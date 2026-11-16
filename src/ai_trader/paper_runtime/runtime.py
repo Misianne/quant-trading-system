@@ -174,6 +174,8 @@ class PaperRuntime:
         self._stops_path = self.run_dir / "stops.json"
         self.ledger = FillLedger(self._ledger_path)
         # 审计库：未注入时在本运行目录内自建（**不**复用线上 audit.db）
+        # 记录所有权：自己开的连接必须自己关，否则长跑会持续泄漏句柄
+        self._owns_journal = journal is None
         if self.journal is None:
             from ..audit.journal import AuditJournal
             self.journal = AuditJournal(
@@ -183,7 +185,12 @@ class PaperRuntime:
 
     # ------------------------------------------------------------------ #
     def _make_run_id(self) -> str:
-        stamp = timebase.now().strftime("%Y%m%dT%H%M%S")
+        """运行 ID 用**墙钟**生成。
+
+        回放时钟停在历史日期上，用它做 ID 会让"哪次运行更新"变得不可判断，
+        还会让不同批次出现同名目录。ID 属于运维标识，不属于业务时间。
+        """
+        stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
         return f"paper-{stamp}-{uuid.uuid4().hex[:8]}"
 
     def _phase2_scope(self) -> Dict[str, Any]:
@@ -615,9 +622,17 @@ class PaperRuntime:
             res = self.registry.stop_all(self.ctx)
             self._stop_errors = list(res.errors)
             self.machine.to_stopped("released")
+            # 审计必须**先写**，再关连接 —— 否则最后一条停止记录写不进去
             self._audit("runtime_stopped", {
                 "ok": res.ok, "errors": res.errors, "run_id": self.run_id,
                 "release_order": list(reversed(self.registry.order()))})
+            # 释放自建审计库连接（注入的 journal 由调用方负责关闭）
+            if getattr(self, "_owns_journal", False) and self.journal is not None:
+                try:
+                    self.journal.close()
+                except Exception as exc:  # noqa: BLE001 - 关闭失败要记录，不假装成功
+                    self._stop_errors.append(
+                        f"关闭审计库失败：{type(exc).__name__}: {exc}")
             return StopResult(res.ok, self.machine.state.value,
                               release=res.as_dict(), errors=list(res.errors))
 

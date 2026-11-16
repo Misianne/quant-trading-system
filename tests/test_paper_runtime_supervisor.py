@@ -245,3 +245,19 @@ def test_supervisor_stop_request_ends_loop(tmp_path):
     out = sup.run(minutes=10)
     assert out["ok"] is True
     assert out["report"]["iterations"] == 0
+
+
+def test_heartbeat_survives_locked_file(tmp_path):
+    """外部正打开心跳文件时，写入不得抛异常（Windows 上 os.replace 会被拒）。"""
+    import sys
+    w = HeartbeatWriter(tmp_path / "hb.json", "r")
+    w.beat("RUNNING", 1)
+    if sys.platform != "win32":
+        pytest.skip("Windows 专属：文件共享语义")
+    with open(tmp_path / "hb.json", "rb") as fh:      # 持有句柄，阻塞 replace
+        hb = w.beat("RUNNING", 2)
+        assert hb.seq == 2
+    assert w.write_failures >= 1
+    # 释放后应恢复写入
+    w.beat("RUNNING", 3)
+    assert read_heartbeat(tmp_path / "hb.json")["seq"] == 3

@@ -1,4 +1,4 @@
-# 星财富 · 本地 Paper/Replay 启动脚本
+﻿# 星财富 · 本地 Paper/Replay 启动脚本
 #
 # 用法（任意目录双击或右键运行均可，脚本自己定位项目根）：
 #   .\scripts\paper_start.ps1                 # 默认 30 分钟

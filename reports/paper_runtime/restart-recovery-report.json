@@ -1,0 +1,363 @@
+{
+  "scenario": "normal_day",
+  "run_id": "paper-20261116T094000-ae17b2cf",
+  "ok": true,
+  "digest": "",
+  "input_digest": "3607be91eacf6fcf",
+  "ticks": 0,
+  "fills": 0,
+  "orders": 0,
+  "final_state": "READY",
+  "states_seen": [],
+  "phases_seen": [],
+  "invariants_ok": true,
+  "failures": [],
+  "clock_trace": [],
+  "report": {
+    "start": {
+      "ok": true,
+      "state": "READY",
+      "already_started": false,
+      "reason": "",
+      "preflight": {
+        "ok": true,
+        "started_at": "2026-11-16T08:36:17+00:00",
+        "finished_at": "2026-11-16T08:36:17+00:00",
+        "failed": [],
+        "checks": [
+          {
+            "name": "explicit_paper_flag",
+            "ok": true,
+            "detail": "已显式指定 --paper",
+            "critical": true,
+            "data": {}
+          },
+          {
+            "name": "paper_runtime_enabled",
+            "ok": true,
+            "detail": "paper_runtime.enabled=false（默认不自动启动）；本次由 --paper 显式启动",
+            "critical": false,
+            "data": {}
+          },
+          {
+            "name": "us_phase2_global_off",
+            "ok": true,
+            "detail": "us_phase2.enabled=False（必须为 false，Paper 用作用域内覆盖而不是改全局）",
+            "critical": true,
+            "data": {}
+          },
+          {
+            "name": "safety_gate_paper_only",
+            "ok": true,
+            "detail": "模拟盘=True 实盘=False kill=False",
+            "critical": true,
+            "data": {
+              "gate": {
+                "live_trading": false,
+                "order_execution_enabled": false,
+                "paper_trading": true,
+                "kill_switch": false,
+                "halt_source": "none",
+                "halt_reason": "",
+                "halt_at": "",
+                "halt_store_failed": false,
+                "halt_read_failed": false,
+                "halt_write_failed": false,
+                "halt_error_kind": "",
+                "halt_error_phase": "",
+                "live_ack_satisfied": false,
+                "live_authorized": false,
+                "real_order_authorized": false
+              }
+            }
+          },
+          {
+            "name": "clock_trusted",
+            "ok": true,
+            "detail": "manual → regular (2026-11-16T09:40:00-05:00)",
+            "critical": true,
+            "data": {
+              "session": {
+                "market": "us",
+                "tz_name": "America/New_York",
+                "local_now": "2026-11-16T09:40:00-05:00",
+                "local_date": "2026-11-16",
+                "weekday": 0,
+                "phase": "regular",
+                "is_trading_day": true,
+                "is_regular_open": true,
+                "is_extended_open": true,
+                "closes_at": "16:00",
+                "reason": "常规时段 09:30-16:00"
+              },
+              "clock": "manual"
+            }
+          },
+          {
+            "name": "storage_writable",
+            "ok": true,
+            "detail": "C:\\FosunAI-Trading\\data\\paper_runs\\restart-demo\\normal_day-0\\paper_audit.db 可写，剩余 195.9 GB",
+            "critical": true,
+            "data": {
+              "free_gb": 195.92
+            }
+          },
+          {
+            "name": "quote_source_alive",
+            "ok": true,
+            "detail": "可用 1/1",
+            "critical": true,
+            "data": {
+              "ok": 1
+            }
+          },
+          {
+            "name": "risk_config_sane",
+            "ok": true,
+            "detail": "风控参数自洽",
+            "critical": true,
+            "data": {}
+          },
+          {
+            "name": "no_live_broker",
+            "ok": true,
+            "detail": "broker.kind=(unset → paper)",
+            "critical": true,
+            "data": {}
+          }
+        ]
+      },
+      "components": {
+        "order": [
+          "clock",
+          "storage",
+          "caps",
+          "short_guard",
+          "settlement",
+          "market_status",
+          "feed",
+          "broker",
+          "risk",
+          "engine"
+        ],
+        "components": {
+          "clock": {
+            "name": "clock",
+            "started": true,
+            "critical": true,
+            "depends_on": [],
+            "start_count": 1,
+            "stop_count": 0,
+            "last_error": ""
+          },
+          "storage": {
+            "name": "storage",
+            "started": true,
+            "critical": true,
+            "depends_on": [
+              "clock"
+            ],
+            "start_count": 1,
+            "stop_count": 0,
+            "last_error": ""
+          },
+          "caps": {
+            "name": "caps",
+            "started": true,
+            "critical": true,
+            "depends_on": [
+              "clock"
+            ],
+            "start_count": 1,
+            "stop_count": 0,
+            "last_error": ""
+          },
+          "short_guard": {
+            "name": "short_guard",
+            "started": true,
+            "critical": true,
+            "depends_on": [
+              "clock",
+              "caps"
+            ],
+            "start_count": 1,
+            "stop_count": 0,
+            "last_error": ""
+          },
+          "settlement": {
+            "name": "settlement",
+            "started": true,
+            "critical": true,
+            "depends_on": [
+              "clock"
+            ],
+            "start_count": 1,
+            "stop_count": 0,
+            "last_error": ""
+          },
+          "market_status": {
+            "name": "market_status",
+            "started": true,
+            "critical": true,
+            "depends_on": [
+              "clock",
+              "caps"
+            ],
+            "start_count": 1,
+            "stop_count": 0,
+            "last_error": ""
+          },
+          "feed": {
+            "name": "feed",
+            "started": true,
+            "critical": true,
+            "depends_on": [
+              "clock"
+            ],
+            "start_count": 1,
+            "stop_count": 0,
+            "last_error": ""
+          },
+          "broker": {
+            "name": "broker",
+            "started": true,
+            "critical": true,
+            "depends_on": [
+              "feed",
+              "market_status",
+              "settlement",
+              "caps"
+            ],
+            "start_count": 1,
+            "stop_count": 0,
+            "last_error": ""
+          },
+          "risk": {
+            "name": "risk",
+            "started": true,
+            "critical": true,
+            "depends_on": [
+              "market_status",
+              "short_guard",
+              "settlement",
+              "caps"
+            ],
+            "start_count": 1,
+            "stop_count": 0,
+            "last_error": ""
+          },
+          "engine": {
+            "name": "engine",
+            "started": true,
+            "critical": true,
+            "depends_on": [
+              "broker",
+              "risk"
+            ],
+            "start_count": 1,
+            "stop_count": 0,
+            "last_error": ""
+          }
+        },
+        "health": {
+          "clock": {
+            "name": "clock",
+            "healthy": true,
+            "detail": "readings=3",
+            "critical": true,
+            "checked_at": "2026-11-16T08:36:17+00:00",
+            "metrics": {}
+          },
+          "storage": {
+            "name": "storage",
+            "healthy": true,
+            "detail": "integrity=ok wal=0.05MB",
+            "critical": true,
+            "checked_at": "2026-11-16T08:36:17+00:00",
+            "metrics": {}
+          },
+          "caps": {
+            "name": "caps",
+            "healthy": true,
+            "detail": "venue=paper types=4",
+            "critical": true,
+            "checked_at": "2026-11-16T08:36:17+00:00",
+            "metrics": {}
+          },
+          "short_guard": {
+            "name": "short_guard",
+            "healthy": true,
+            "detail": "mode=disabled",
+            "critical": true,
+            "checked_at": "2026-11-16T08:36:17+00:00",
+            "metrics": {}
+          },
+          "settlement": {
+            "name": "settlement",
+            "healthy": true,
+            "detail": "USD/cash",
+            "critical": true,
+            "checked_at": "2026-11-16T08:36:17+00:00",
+            "metrics": {}
+          },
+          "market_status": {
+            "name": "market_status",
+            "healthy": true,
+            "detail": "symbols=0",
+            "critical": true,
+            "checked_at": "2026-11-16T08:36:17+00:00",
+            "metrics": {}
+          },
+          "feed": {
+            "name": "feed",
+            "healthy": true,
+            "detail": "age=0.0s fetches=1 fail=0",
+            "critical": true,
+            "checked_at": "2026-11-16T08:36:17+00:00",
+            "metrics": {}
+          },
+          "broker": {
+            "name": "broker",
+            "healthy": true,
+            "detail": "orders=2 positions=0",
+            "critical": true,
+            "checked_at": "2026-11-16T08:36:17+00:00",
+            "metrics": {}
+          },
+          "risk": {
+            "name": "risk",
+            "healthy": true,
+            "detail": "halt=0 max_pos=8",
+            "critical": true,
+            "checked_at": "2026-11-16T08:36:17+00:00",
+            "metrics": {}
+          },
+          "engine": {
+            "name": "engine",
+            "healthy": true,
+            "detail": "scans=0 gateway=on",
+            "critical": true,
+            "checked_at": "2026-11-16T08:36:17+00:00",
+            "metrics": {}
+          }
+        }
+      }
+    },
+    "recovery": {
+      "ok": true,
+      "fills_in_ledger": 2,
+      "fills_in_broker": 2,
+      "backfilled": 0,
+      "orphans": 0,
+      "checked_at": "2026-11-16T08:36:17+00:00",
+      "actions": []
+    },
+    "ledger": {
+      "fills": 2,
+      "orders": 2,
+      "torn_isolated": 0,
+      "write_errors": 0,
+      "path": "C:\\FosunAI-Trading\\data\\paper_runs\\restart-demo\\normal_day-0\\paper_fills.jsonl"
+    }
+  }
+}
