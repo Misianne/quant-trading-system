@@ -1,0 +1,193 @@
+{
+  "ok": true,
+  "minutes": 2.0,
+  "segments": 495,
+  "ticks": 3960,
+  "fills": 278,
+  "unique_fills": 278,
+  "kb_before_stop": {
+    ".jsonl": 3087.8,
+    ".db": 5820.0,
+    "shm": 32.0,
+    "wal": 4039.6,
+    ".lock": 0.1,
+    ".json": 194.9
+  },
+  "kb_after_stop": {
+    ".jsonl": 3088.2,
+    ".db": 5820.0,
+    ".json": 194.9
+  },
+  "sqlite_integrity": "ok",
+  "invariants_ok": true,
+  "samples": [
+    {
+      "t": 0.2,
+      "segments": 1,
+      "orders": 0,
+      "fills": 0,
+      "kb": {
+        ".jsonl": 7.7,
+        ".db": 4.0,
+        "shm": 32.0,
+        "wal": 583.4,
+        ".lock": 0.1,
+        ".json": 0.2
+      }
+    },
+    {
+      "t": 10.2,
+      "segments": 50,
+      "orders": 26,
+      "fills": 26,
+      "kb": {
+        ".jsonl": 296.8,
+        ".db": 568.0,
+        "shm": 32.0,
+        "wal": 4031.5,
+        ".lock": 0.1,
+        ".json": 18.5
+      }
+    },
+    {
+      "t": 20.4,
+      "segments": 98,
+      "orders": 55,
+      "fills": 55,
+      "kb": {
+        ".jsonl": 590.6,
+        ".db": 1064.0,
+        "shm": 32.0,
+        "wal": 4031.5,
+        ".lock": 0.1,
+        ".json": 38.8
+      }
+    },
+    {
+      "t": 30.5,
+      "segments": 143,
+      "orders": 82,
+      "fills": 82,
+      "kb": {
+        ".jsonl": 878.7,
+        ".db": 1616.0,
+        "shm": 32.0,
+        "wal": 4031.5,
+        ".lock": 0.1,
+        ".json": 57.9
+      }
+    },
+    {
+      "t": 40.5,
+      "segments": 185,
+      "orders": 105,
+      "fills": 105,
+      "kb": {
+        ".jsonl": 1162.9,
+        ".db": 2224.0,
+        "shm": 32.0,
+        "wal": 4031.5,
+        ".lock": 0.1,
+        ".json": 74.0
+      }
+    },
+    {
+      "t": 50.7,
+      "segments": 228,
+      "orders": 126,
+      "fills": 126,
+      "kb": {
+        ".jsonl": 1413.4,
+        ".db": 2588.0,
+        "shm": 32.0,
+        "wal": 4031.5,
+        ".lock": 0.1,
+        ".json": 88.4
+      }
+    },
+    {
+      "t": 60.9,
+      "segments": 269,
+      "orders": 151,
+      "fills": 151,
+      "kb": {
+        ".jsonl": 1665.0,
+        ".db": 3076.0,
+        "shm": 32.0,
+        "wal": 4031.5,
+        ".lock": 0.1,
+        ".json": 106.1
+      }
+    },
+    {
+      "t": 70.9,
+      "segments": 309,
+      "orders": 165,
+      "fills": 165,
+      "kb": {
+        ".jsonl": 1906.0,
+        ".db": 3512.0,
+        "shm": 32.0,
+        "wal": 4031.5,
+        ".lock": 0.1,
+        ".json": 115.9
+      }
+    },
+    {
+      "t": 81.2,
+      "segments": 350,
+      "orders": 191,
+      "fills": 191,
+      "kb": {
+        ".jsonl": 2155.6,
+        ".db": 3896.0,
+        "shm": 32.0,
+        "wal": 4039.6,
+        ".lock": 0.1,
+        ".json": 134.0
+      }
+    },
+    {
+      "t": 91.4,
+      "segments": 389,
+      "orders": 211,
+      "fills": 211,
+      "kb": {
+        ".jsonl": 2415.8,
+        ".db": 4520.0,
+        "shm": 32.0,
+        "wal": 4039.6,
+        ".lock": 0.1,
+        ".json": 147.8
+      }
+    },
+    {
+      "t": 101.4,
+      "segments": 428,
+      "orders": 235,
+      "fills": 235,
+      "kb": {
+        ".jsonl": 2649.3,
+        ".db": 4884.0,
+        "shm": 32.0,
+        "wal": 4039.6,
+        ".lock": 0.1,
+        ".json": 164.8
+      }
+    },
+    {
+      "t": 111.6,
+      "segments": 465,
+      "orders": 259,
+      "fills": 259,
+      "kb": {
+        ".jsonl": 2885.1,
+        ".db": 5340.0,
+        "shm": 32.0,
+        "wal": 4039.6,
+        ".lock": 0.1,
+        ".json": 181.3
+      }
+    }
+  ]
+}

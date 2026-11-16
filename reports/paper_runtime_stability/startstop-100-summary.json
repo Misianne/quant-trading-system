@@ -1,0 +1,9 @@
+{
+  "cycles": 100,
+  "ok": 100,
+  "failed": 0,
+  "elapsed_s": 122.5,
+  "max_cycle_s": 2.26,
+  "avg_cycle_s": 1.22,
+  "failures": []
+}

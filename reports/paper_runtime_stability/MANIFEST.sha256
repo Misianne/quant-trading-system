@@ -1,0 +1,6 @@
+e1205cef4d26a845ebcab160df4c92c605eb0b0601bc9a0a4aa178949070baf5 *./cmd-scripts-verification.json
+acca66681cf2a2824ca95ed64b4505927d66592037d8a68fd06a1264dbda09c3 *./db-stress-result.json
+e6a85ebaf48ff7f310ec4f27bc6ed6211227db115d6f177c97631ae6b26c8784 *./r10.xml
+332581ab0729560628e6f5a9958f5e90294bae4fe9c6ceb46a86be03bdcdcc45 *./soak-120min-monitor.jsonl
+93ab9d914cbe0ef8d49c7dd200fd4d83fe17923ff605e531793024e89b083614 *./soak-120min-report.json
+cdae0e64a6bcac1862b2ccd16fbb001fcf5a07d0d606067eb390a3ce857700ab *./startstop-100-summary.json

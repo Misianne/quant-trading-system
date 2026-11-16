@@ -1,0 +1,51 @@
+{
+  "results": [
+    {
+      "test": "stop-when-idle",
+      "ok": true,
+      "detail": "rc=0 out=[info] 没有 PID 文件，视为已停止。"
+    },
+    {
+      "test": "start-from-outside-cmd",
+      "ok": true,
+      "detail": "rc=0 pid=17224 out=[start] C:\\FosunAI-Trading\\.venv\\Scripts\\python.exe -m ai_trader.paper_runtime --paper --out C:\\FosunAI-Trading\\data\\paper_runs --lock-root C:\\FosunAI"
+    },
+    {
+      "test": "status-running-cn-space-cwd",
+      "ok": true,
+      "detail": "rc=0 head={\r\n    \"root\":  \"C:\\\\FosunAI-Trading\\\\data\\\\paper_runs\",\r\n    \"pid\":  17224,\r\n    \"pid_alive\":  true,\r\n    \"verdict\":  \"RUNNING\",\r\n    \"heartbeat\":  {\r\n        "
+    },
+    {
+      "test": "duplicate-start-blocked",
+      "ok": true,
+      "detail": "rc=3 out=[BLOCKED] 已有 Paper 进程在运行 (PID=17224)。先执行 paper_stop.ps1。"
+    },
+    {
+      "test": "stop-via-powershell",
+      "ok": true,
+      "detail": "rc=0 pid_alive=False out=[stop] 已写入优雅停止请求：C:\\FosunAI-Trading\\data\\paper_runs\\run-soak-20261116T185628\\stop.request\n[OK] 进程 17224 已优雅退出。"
+    },
+    {
+      "test": "status-after-stop",
+      "ok": true,
+      "detail": "rc=6 ['    \"verdict\":  \"DEAD\",']"
+    },
+    {
+      "test": "start-from-cn-space-cwd",
+      "ok": true,
+      "detail": "rc=0 pid=29596"
+    },
+    {
+      "test": "status-after-abnormal-exit",
+      "ok": true,
+      "detail": "verdict=['    \"verdict\":  \"DEAD\",']"
+    },
+    {
+      "test": "start-invalid-arg-fails",
+      "ok": true,
+      "detail": "rc=2 out=[info] 清理失效 PID 文件：29596\n[start] C:\\FosunAI-Trading\\.venv\\Scripts\\python.exe -m ai_trader.paper_runtime --paper --out C:\\FosunAI-Trading\\data\\paper_runs --lock-root C:\\FosunAI-Trading\\data\\paper_runs "
+    }
+  ],
+  "passed": 9,
+  "total": 9
+}

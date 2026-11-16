@@ -1,0 +1,295 @@
+{
+  "ok": true,
+  "run_id": "paper-20261116T183752-d4501603",
+  "run_dir": "C:\\FosunAI-Trading\\data\\paper_runs\\stability-120m\\run-session-20261116T183752",
+  "planned_minutes": 120.0,
+  "segments": 1650,
+  "ticks": 13200,
+  "fills": 953,
+  "final_state": "STOPPED",
+  "stop": {
+    "ok": true,
+    "state": "STOPPED",
+    "already_stopped": false,
+    "release": {
+      "ok": true,
+      "started": [],
+      "failed": "",
+      "rolled_back": [],
+      "errors": []
+    },
+    "errors": []
+  },
+  "anomalies": [],
+  "first": {
+    "tag": "before-stop",
+    "wall_at": "2026-11-16T20:37:59",
+    "elapsed_min": 120.06,
+    "rss_mb": 49.39,
+    "commit_mb": 44.27,
+    "handles": 179,
+    "threads": 1,
+    "gc_objects": 45473,
+    "gc_count": [
+      968,
+      5,
+      7
+    ],
+    "state": "RUNNING",
+    "health": "OK",
+    "segments": 1650,
+    "ticks": 13200,
+    "orders": 953,
+    "fills": 953,
+    "positions": 1,
+    "cash_usd": 1078881.08,
+    "invariants_ok": true
+  },
+  "idle": [
+    {
+      "tag": "idle",
+      "min": 4.0,
+      "rss_mb": 45.62,
+      "commit_mb": 39.99,
+      "handles": 174,
+      "gc_objects": 45440
+    },
+    {
+      "tag": "idle",
+      "min": 3.0,
+      "rss_mb": 47.03,
+      "commit_mb": 41.63,
+      "handles": 174,
+      "gc_objects": 45440
+    },
+    {
+      "tag": "idle",
+      "min": 2.0,
+      "rss_mb": 47.03,
+      "commit_mb": 41.63,
+      "handles": 174,
+      "gc_objects": 45440
+    },
+    {
+      "tag": "idle",
+      "min": 1.0,
+      "rss_mb": 47.03,
+      "commit_mb": 41.63,
+      "handles": 174,
+      "gc_objects": 45440
+    },
+    {
+      "tag": "idle",
+      "min": -0.0,
+      "rss_mb": 47.03,
+      "commit_mb": 41.63,
+      "handles": 174,
+      "gc_objects": 45440
+    }
+  ],
+  "session": {
+    "run_id": "paper-20261116T183752-d4501603",
+    "segments": 1650,
+    "ticks": 13200,
+    "fills": 953,
+    "state": "STOPPED",
+    "orders": 0,
+    "cash": {},
+    "health": "HALTED",
+    "invariants": {
+      "ok": true,
+      "failed": [],
+      "results": [
+        {
+          "name": "cash_matches_ledger",
+          "ok": true,
+          "detail": "现金与成交流水一致",
+          "severity": "critical",
+          "metrics": {
+            "cash": {
+              "USD": 1078881.0843
+            },
+            "opening": {
+              "USD": 1000000.0
+            },
+            "delta": {
+              "USD": 78881.083367
+            }
+          }
+        },
+        {
+          "name": "positions_match_fills",
+          "ok": true,
+          "detail": "持仓与流水一致",
+          "severity": "critical",
+          "metrics": {
+            "positions": {
+              "USAAPL": 97.0
+            },
+            "from_fills": {
+              "USAAPL": 97.0
+            }
+          }
+        },
+        {
+          "name": "no_overfill",
+          "ok": true,
+          "detail": "无超量成交",
+          "severity": "critical",
+          "metrics": {
+            "orders": 953
+          }
+        },
+        {
+          "name": "no_duplicate_fill",
+          "ok": true,
+          "detail": "成交 ID 唯一",
+          "severity": "critical",
+          "metrics": {
+            "fills": 953,
+            "unique": 953
+          }
+        },
+        {
+          "name": "short_policy",
+          "ok": true,
+          "detail": "无未授权卖空",
+          "severity": "critical",
+          "metrics": {
+            "shorts": {},
+            "short_allowed": false
+          }
+        },
+        {
+          "name": "settlement_consistent",
+          "ok": true,
+          "detail": "结算可用资金自洽",
+          "severity": "warn",
+          "metrics": {}
+        }
+      ]
+    }
+  },
+  "segments_tail": [
+    {
+      "segment": 1641,
+      "date": "2027-09-13",
+      "kind": "buy",
+      "ticks": 8,
+      "fills_delta": 0,
+      "state": "RUNNING",
+      "orders": 951,
+      "cash": {
+        "USD": 939041.0847
+      }
+    },
+    {
+      "segment": 1642,
+      "date": "2027-09-13",
+      "kind": "buy",
+      "ticks": 8,
+      "fills_delta": 0,
+      "state": "RUNNING",
+      "orders": 951,
+      "cash": {
+        "USD": 939041.0847
+      }
+    },
+    {
+      "segment": 1643,
+      "date": "2027-09-13",
+      "kind": "buy",
+      "ticks": 8,
+      "fills_delta": 0,
+      "state": "RUNNING",
+      "orders": 951,
+      "cash": {
+        "USD": 939041.0847
+      }
+    },
+    {
+      "segment": 1644,
+      "date": "2027-09-13",
+      "kind": "buy",
+      "ticks": 8,
+      "fills_delta": 0,
+      "state": "RUNNING",
+      "orders": 951,
+      "cash": {
+        "USD": 939041.0847
+      }
+    },
+    {
+      "segment": 1645,
+      "date": "2027-09-13",
+      "kind": "buy",
+      "ticks": 8,
+      "fills_delta": 0,
+      "state": "RUNNING",
+      "orders": 951,
+      "cash": {
+        "USD": 939041.0847
+      }
+    },
+    {
+      "segment": 1646,
+      "date": "2027-09-13",
+      "kind": "buy",
+      "ticks": 8,
+      "fills_delta": 0,
+      "state": "RUNNING",
+      "orders": 951,
+      "cash": {
+        "USD": 939041.0847
+      }
+    },
+    {
+      "segment": 1647,
+      "date": "2027-09-13",
+      "kind": "buy",
+      "ticks": 8,
+      "fills_delta": 0,
+      "state": "RUNNING",
+      "orders": 951,
+      "cash": {
+        "USD": 939041.0847
+      }
+    },
+    {
+      "segment": 1648,
+      "date": "2027-09-14",
+      "kind": "sell",
+      "ticks": 8,
+      "fills_delta": 1,
+      "state": "RUNNING",
+      "orders": 952,
+      "cash": {
+        "USD": 1096376.5929
+      }
+    },
+    {
+      "segment": 1649,
+      "date": "2027-09-14",
+      "kind": "mwcb",
+      "ticks": 8,
+      "fills_delta": 1,
+      "state": "RUNNING",
+      "orders": 953,
+      "cash": {
+        "USD": 1078881.0843
+      }
+    },
+    {
+      "segment": 1650,
+      "date": "2027-09-14",
+      "kind": "sell",
+      "ticks": 8,
+      "fills_delta": 0,
+      "state": "RUNNING",
+      "orders": 953,
+      "cash": {
+        "USD": 1078881.0843
+      }
+    }
+  ]
+}

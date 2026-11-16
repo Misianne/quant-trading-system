@@ -437,6 +437,9 @@ def cmd_session(cfg: Any, args: argparse.Namespace, root: Path) -> int:
                 snap("5min")
     finally:
         final = snap("before-stop")
+        # 必须在 stop() **之前**取会话摘要：stop 后组件已释放，
+        # broker 服务被移除、健康聚合会变成 HALTED（未启动=不健康），数字会失真。
+        session_summary = sess.summary()
         stopres = sess.stop("session_end")
         final_state = rt.machine.state.value
 
@@ -461,7 +464,7 @@ def cmd_session(cfg: Any, args: argparse.Namespace, root: Path) -> int:
             "stop": stopres.as_dict(),
             "anomalies": anomalies,
             "first": final, "idle": idle_rows,
-            "session": sess.summary(),
+            "session": session_summary,
             "segments_tail": seg_rows[-10:],
         }
         (run_dir / "run_report.json").write_text(
