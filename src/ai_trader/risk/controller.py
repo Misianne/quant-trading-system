@@ -561,17 +561,30 @@ class RiskController:
         # 这是 US-P0「风险处置不被普通限制阻断」的延续。
         if self.phase2_enabled and self.phase2_checks.get("market_status", True):
             if self.market_status is None:
-                self._check(checks, "market_status", False,
-                            "US-P2 已启用但未注入 MarketStatusService（fail-closed）")
-                reasons.append("市场状态组件未接入，拒绝下单")
+                if intent.is_exit:
+                    # US-P0 优先：组件未接入不得阻断风险退出，只能告警。
+                    self._check(checks, "market_status", True,
+                                "US-P2 组件未接入；本次为减仓，放行（已告警）")
+                    warnings.append("市场状态组件未接入：已禁止新开仓，减仓放行")
+                else:
+                    self._check(checks, "market_status", False,
+                                "US-P2 已启用但未注入 MarketStatusService（fail-closed）")
+                    reasons.append("市场状态组件未接入，拒绝下单")
             else:
                 try:
                     md = self.market_status.evaluate(sym, is_exit=bool(intent.is_exit), now=now)
                 except Exception as exc:
-                    self._check(checks, "market_status", False,
-                                f"市场状态查询异常：{type(exc).__name__}: {exc}")
-                    reasons.append("市场状态无法确认，拒绝下单")
-                else:
+                    if intent.is_exit:
+                        self._check(checks, "market_status", True,
+                                    f"市场状态查询异常，减仓放行：{type(exc).__name__}")
+                        warnings.append(f"市场状态查询异常，减仓放行：{exc}")
+                        md = None
+                    else:
+                        self._check(checks, "market_status", False,
+                                    f"市场状态查询异常：{type(exc).__name__}: {exc}")
+                        reasons.append("市场状态无法确认，拒绝下单")
+                        md = None
+                if md is not None:
                     if md.allowed:
                         detail = f"市场状态 {md.state.value}"
                         if md.warning:
@@ -605,12 +618,23 @@ class RiskController:
                     allow_short=bool(self.allow_short),
                 )
             except OrderValidationError as exc:
-                self._check(checks, "order_policy", False, str(exc))
-                reasons.append(f"订单不合规：{exc}")
+                if intent.is_exit:
+                    # 退出优先：订单不合规只告警，不阻断减仓（阻断退出比发错单更危险）
+                    self._check(checks, "order_policy", True,
+                                f"减仓放行（订单告警）：{exc}")
+                    warnings.append(f"减仓订单不合规但已放行：{exc}")
+                else:
+                    self._check(checks, "order_policy", False, str(exc))
+                    reasons.append(f"订单不合规：{exc}")
             except Exception as exc:
-                self._check(checks, "order_policy", False,
-                            f"订单校验异常：{type(exc).__name__}: {exc}")
-                reasons.append("订单校验异常，拒绝下单")
+                if intent.is_exit:
+                    self._check(checks, "order_policy", True,
+                                f"订单校验异常，减仓放行：{type(exc).__name__}")
+                    warnings.append(f"订单校验异常，减仓放行：{exc}")
+                else:
+                    self._check(checks, "order_policy", False,
+                                f"订单校验异常：{type(exc).__name__}: {exc}")
+                    reasons.append("订单校验异常，拒绝下单")
             else:
                 self._check(checks, "order_policy", True,
                             f"{req.order_type}/{req.tif} 通过能力校验")

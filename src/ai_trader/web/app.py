@@ -187,7 +187,15 @@ def create_app(rt: Optional[Runtime] = None) -> FastAPI:
     @app.get("/api/market/{symbol}")
     def api_market(request: Request, symbol: str):
         check(request)
-        q = runtime.broker.get_quote(symbol)
+        # US-P2-A：展示型取价也走统一网关。**不提供直连 broker 的兜底** ——
+        # 兜底本身就是旁路，宁可 503 也不让未校验的价格流向界面。
+        gateway = getattr(getattr(runtime, "engine", None), "quote_gateway", None)
+        if gateway is None:
+            raise HTTPException(status_code=503, detail="quote gateway unavailable")
+        try:
+            q = gateway.quote(symbol, "display")
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=503, detail=f"quote unavailable: {exc}")
         kl = runtime.broker.get_klines(symbol, "day", 60)
         return JSONResponse({"quote": q.as_dict(),
                              "klines": [c.__dict__ for c in kl]})

@@ -395,7 +395,7 @@ def cmd_demo(args) -> int:
                             "positions": [p.as_dict() for p in broker.get_positions()]})
     # --- 3. 止损触发 ---
     if broker.get_positions():
-        px = broker.get_quote("hk00700").last
+        px = engine.quote_gateway.price("hk00700", "display")
         engine.register_stops("hk00700", stop_loss=px * 1.02, take_profit=None, qty=100)
         executed = engine.monitor(now=t0)
         report["steps"].append({"step": "3_stop_loss", "executed": executed[:3],

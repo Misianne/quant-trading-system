@@ -25,6 +25,7 @@ from typing import Any, Dict, List, Optional
 from ..ai.authority import CODE_STALE, DecisionAuthority
 from ..ai.base import AIModel, AIModelError, MarketContext, TradingSignal
 from ..ai.providers import build_model
+from ..market.gateway import QuoteGateway, QuoteUnavailable
 from ..audit.faults import (
     KIND_AUDIT_WRITE,
     KIND_ORDER_INTENT,
@@ -115,6 +116,15 @@ class StrategyEngine:
                  feed=None):
         self.cfg = cfg
         self.broker = broker
+        # ---- US-P2-A 收口：所有行情读取统一走网关（结构上消除旁路）----
+        # 时钟复用风控的 rules.clocks，保证"时段判定"和"交易规则"用的是同一套时区/日历。
+        _clocks = getattr(getattr(risk, "rules", None), "clocks", {}) or {}
+        _p2 = (cfg.raw.get("us_phase2") or {})
+        self.quote_gateway = QuoteGateway(
+            broker, _clocks,
+            enabled=bool(_p2.get("enabled", False)),
+            max_age_seconds=(_p2.get("market_status") or {}).get("quote_max_age_seconds"),
+        )
         self.model = model
         self.risk = risk
         self.journal = journal
@@ -533,7 +543,8 @@ class StrategyEngine:
         market = market_of(symbol)
         cfg_mkt = (self.cfg.raw.get("markets") or {}).get(market) or {}
         currency = cfg_mkt.get("currency") or currency_of(symbol)
-        quote = self.broker.get_quote(symbol)
+        # US-P2-A：新开仓只能用"常规交易时段"的行情；盘前/盘后价不得冒充盘中价。
+        quote = self.quote_gateway.quote(symbol, "regular_only", market=market)
         num = int(self.cfg.get("strategy.kline_num", 120) or 120)
         ktype = str(self.cfg.get("strategy.kline_ktype", "day") or "day")
         candles = self.broker.get_klines(symbol, ktype, num)
@@ -576,6 +587,10 @@ class StrategyEngine:
         portfolio = portfolio or self.build_portfolio(currency, now)
         try:
             ctx, quote = self._build_context(symbol, portfolio)
+        except QuoteUnavailable as exc:
+            # US-P2-A：行情不可用是"明确拒绝"，不是"取数失败"——
+            # 不得回退到上一个价格继续交易。
+            return SymbolOutcome(symbol, "error", f"行情不可用: {exc}")
         except BrokerError as exc:
             return SymbolOutcome(symbol, "error", f"取行情失败: {exc}")
         except Exception as exc:  # noqa: BLE001
@@ -1289,7 +1304,10 @@ class StrategyEngine:
         quotes: Dict[str, Quote] = {}
         for p in positions:
             try:
-                quotes[p.symbol] = self.broker.get_quote(p.symbol)
+                # US-P2-A：退出路径放宽到"任何可交易时段"（含盘前/盘后/夜盘），
+                # 但仍要求行情新鲜 —— 过期行情不得当作最新价用于止损判断。
+                quotes[p.symbol] = self.quote_gateway.quote(
+                    p.symbol, "risk_exit", now=now, market=p.market)
             except Exception as exc:  # noqa: BLE001
                 # US-P0-4：行情失败**不能**让这条持仓的止损静默失效。
                 # 退一步用券商持仓里的最新价（交易所回报的 mark，不是本地造的），

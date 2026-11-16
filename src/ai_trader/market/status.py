@@ -49,12 +49,49 @@ MWCB_LEVELS: Dict[int, Dict[str, Any]] = {
     3: {"threshold_pct": 0.20, "halt_minutes": 0, "close_for_day": True},
 }
 
-#: LULD 带宽：Tier1 5% / Tier2 10%；开盘与收盘各 25 分钟用 20%。
+#: ---- LULD 价格带参数（官方 LULD Plan Table 1 / NYSE / investor.gov）----
+#:
+#: 关键：**不存在"适用于所有证券、所有时段"的单一阈值**。
+#: 带宽同时取决于 (Tier, 前收价区间, 是否处于双倍窗口)：
+#:
+#:   | 前收价        | Tier1 常规 | Tier1 双倍 | Tier2 常规 | Tier2 双倍 |
+#:   | > $3.00       | 5%        | 10%       | 10%       | 20%       |
+#:   | $0.75 ~ $3.00 | 20%       | 40%       | 20%       | 40%       |
+#:   | < $0.75       | min($0.15,75%) | min($0.30,150%) | 同左 | 同左 |
+#:
+#: 双倍窗口：**收盘前 25 分钟（15:35–16:00 ET）**。
+#: 开盘 9:30–9:45 的宽幅：Amendment 18（2020-02-24）已取消开盘放宽，但部分
+#: 官方材料（LULD Plan Table 1）仍标注为双倍 → 本实现**默认不启用开盘双倍**，
+#: 由 ``open_window_doubled`` 显式打开，并在文档中标记为 UNVERIFIED 冲突项。
 LULD_TIER1_PCT = 0.05
 LULD_TIER2_PCT = 0.10
-LULD_OPEN_CLOSE_PCT = 0.20
+LULD_MID_PCT = 0.20            # $0.75 ~ $3.00
+LULD_LOW_ABS = 0.15            # < $0.75：min($0.15, 75%)
+LULD_LOW_PCT = 0.75
+#: 兼容旧名（上一轮把"开收盘 20%"当通用值，已废弃）
+LULD_OPEN_CLOSE_PCT = 0.10
 #: 同方向第二次触发时带宽翻倍的上限（LULD Plan: 大到 2 倍）
 LULD_MAX_DOUBLINGS = 2
+#: 双倍窗口：收盘前 25 分钟
+LULD_CLOSE_WINDOW_MINUTES = 25
+
+
+def luld_band_width(prior_close: float, *, tier: int = 1, doubled: bool = False) -> Tuple[float, str]:
+    """返回 ``(宽度, 单位)``，单位 ``"pct"`` 表示比例，``"abs"`` 表示绝对美元。
+
+    严格按官方三档价格区间计算；**不做"一刀切百分比"**。
+    """
+    p = float(prior_close)
+    if p <= 0:
+        raise MarketStatusError(f"前收价必须为正: {prior_close}")
+    factor = 2.0 if doubled else 1.0
+    if p > 3.0:
+        base = LULD_TIER1_PCT if tier == 1 else LULD_TIER2_PCT
+        return base * factor, "pct"
+    if p >= 0.75:
+        return LULD_MID_PCT * factor, "pct"
+    # < $0.75：min($0.15, 75%)，双倍时 min($0.30, 150%)
+    return min(LULD_LOW_ABS * factor, p * LULD_LOW_PCT * factor), "abs"
 
 
 class MarketStatusError(ValueError):
@@ -73,6 +110,8 @@ class LULDBand:
     doubling: int
     tier: int
     computed_at: datetime
+    #: 当带宽以绝对美元表示时（< $0.75 档）记录绝对值，否则为 None
+    band_abs: Optional[float] = None
 
     @property
     def width(self) -> float:
@@ -177,8 +216,13 @@ class MarketStatusService:
     # ------------------------------------------------------------------ #
     # 数据注入
     # ------------------------------------------------------------------ #
-    def update_index(self, price: float, ts: datetime) -> Optional[int]:
-        """更新基准指数价格；返回触发的 MWCB 级别（0 表示未触发）。"""
+    def update_index(self, price: float, ts: datetime,
+                     *, at_or_after_325: bool = False) -> Optional[int]:
+        """更新基准指数价格；返回触发的 MWCB 级别（0 表示未触发）。
+
+        ``at_or_after_325``：美东时间是否已到/过 15:25。
+        **官方规则**：L1/L2 在 15:25 及以后触发时**不**停市；L3 任何时间都停市到收盘。
+        """
         self._index_ts = ts
         if self._index_ref <= 0:
             self._index_ref = float(price)
@@ -194,6 +238,14 @@ class MarketStatusService:
         if not triggered:
             return 0
         cfg = MWCB_LEVELS[triggered]
+        # L1/L2 在 15:25 之后不再停市（L3 不受此限）
+        if triggered in (1, 2) and at_or_after_325:
+            self._mwcb.level = max(self._mwcb.level, triggered)
+            self._mwcb.triggered_at = ts
+            self._mwcb.reference_price = self._index_ref
+            self._mwcb.last_price = self._index_last
+            self._mwcb.resume_at = None
+            return 0
         self._mwcb.level = triggered
         self._mwcb.triggered_at = ts
         self._mwcb.reference_price = self._index_ref
@@ -205,16 +257,31 @@ class MarketStatusService:
             self._mwcb.resume_at = ts + timedelta(minutes=cfg["halt_minutes"])
         return triggered
 
-    def update_reference(self, symbol: str, price: float) -> None:
-        """设置 LULD 参考价（通常为最近 5 分钟成交均价或前收，由调用方决定）。"""
+    def update_reference(self, symbol: str, price: float,
+                         *, prior_close: Optional[float] = None,
+                         doubled: bool = False) -> None:
+        """设置 LULD 参考价。
+
+        ``price``：参考价（开盘价或近 5 分钟成交均价，由调用方提供）。
+        ``prior_close``：前一交易日收盘价 —— **官方用它决定适用哪一档百分比**。
+        ``doubled``：是否处于收盘前 25 分钟的宽幅窗口。
+        """
         if price <= 0:
             raise MarketStatusError(f"参考价必须为正: {price}")
         sym = symbol.upper()
-        self._bands[sym] = self._compute_band(sym, float(price), doubling=0)
+        self._bands[sym] = self._compute_band(sym, float(price), doubling=0,
+                                              doubled=doubled, prior_close=prior_close)
 
     def on_quote(self, symbol: str, price: float, ts: datetime,
-                 in_open_close_window: bool = False) -> Optional[LULDBand]:
-        """喂入一笔成交，判断是否触发 LULD 暂停。返回当前价格带。"""
+                 *, doubled: bool = False, prior_close: Optional[float] = None,
+                 in_open_close_window: Optional[bool] = None) -> Optional[LULDBand]:
+        """喂入一笔成交，判断是否触发 LULD 暂停。返回当前价格带。
+
+        ``in_open_close_window`` 是上一轮的旧参数名，仅为兼容保留；
+        等价于 ``doubled=True``。
+        """
+        if in_open_close_window is not None and in_open_close_window:
+            doubled = True
         sym = symbol.upper()
         self._last_quote[sym] = (float(price), ts)
         st = self._symbols.setdefault(sym, SymbolStatus(symbol=sym))
@@ -250,7 +317,7 @@ class MarketStatusService:
         self._luld_breaches[sym] = self._luld_breaches.get(sym, 0) + 1
         doubling = min(self._luld_breaches[sym] - 1, LULD_MAX_DOUBLINGS)
         new_band = self._compute_band(sym, band.reference_price, doubling,
-                                      in_open_close_window=in_open_close_window)
+                                      doubled=doubled, prior_close=prior_close)
         self._bands[sym] = new_band
         st.state = MarketState.LULD_PAUSED
         st.reason = HaltReason.LULD
@@ -374,20 +441,36 @@ class MarketStatusService:
 
     # ------------------------------------------------------------------ #
     def _compute_band(self, symbol: str, ref: float, doubling: int,
-                      in_open_close_window: bool = False) -> LULDBand:
+                      *, doubled: bool = False,
+                      prior_close: Optional[float] = None) -> LULDBand:
+        """按官方三档价格区间 + Tier + 双倍窗口计算带宽。
+
+        ``doubled`` 表示当前处于**收盘前 25 分钟**（或显式开启的开盘宽幅）窗口；
+        ``doubling`` 表示该标的**同方向重复越界导致的额外翻倍次数**（0/1/2）。
+        两者相乘即最终带宽。
+        """
         tier = 2 if symbol in self.tier2_symbols else 1
-        if in_open_close_window:
-            pct = LULD_OPEN_CLOSE_PCT
+        bucket = float(prior_close) if (prior_close and prior_close > 0) else float(ref)
+        width, unit = luld_band_width(bucket, tier=tier, doubled=doubled)
+        scale = 2 ** min(int(doubling), LULD_MAX_DOUBLINGS)
+        if unit == "pct":
+            pct = width * scale
+            upper = round(ref * (1 + pct), 6)
+            lower = round(max(0.0, ref * (1 - pct)), 6)
+            band_abs = None
         else:
-            pct = LULD_TIER2_PCT if tier == 2 else LULD_TIER1_PCT
-        pct = pct * (2 ** doubling)
+            band_abs = width * scale
+            pct = (band_abs / ref) if ref > 0 else 0.0
+            upper = round(ref + band_abs, 6)
+            lower = round(max(0.0, ref - band_abs), 6)
         return LULDBand(
             symbol=symbol,
             reference_price=ref,
-            upper=round(ref * (1 + pct), 6),
-            lower=round(ref * (1 - pct), 6),
+            upper=upper,
+            lower=lower,
             band_pct=pct,
-            doubling=doubling,
+            doubling=min(int(doubling), LULD_MAX_DOUBLINGS),
             tier=tier,
             computed_at=datetime.now(timezone.utc),
+            band_abs=band_abs,
         )
