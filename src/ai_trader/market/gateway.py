@@ -90,8 +90,13 @@ class QuoteGateway:
                  enabled: bool = False,
                  max_age_seconds: Optional[Dict[str, float]] = None,
                  jump_limit_pct: float = 0.35,
-                 now_fn=None):
+                 now_fn=None,
+                 provider: Any = None):
         self.broker = broker
+        #: 可选的真实行情 provider（实现 ``quote(symbol) -> Quote``）。
+        #: 为 None 时行为与既有版本完全一致（走 broker.get_quote）。
+        #: 行情来源变了，但**准入校验（时段/新鲜度/跳变）一条都不少**。
+        self.provider = provider
         self.clocks = dict(clocks or {})
         self.enabled = bool(enabled)
         self.stats = GatewayStats()
@@ -129,6 +134,12 @@ class QuoteGateway:
             source=getattr(raw, "source", "") or "", prev_close=float(getattr(raw, "prev_close", 0.0) or 0.0),
         )
 
+    def _fetch(self, symbol: str):
+        """取原始报价：优先 provider，其次 broker。"""
+        if self.provider is not None:
+            return self.provider.quote(symbol)
+        return self.broker.get_quote(symbol)
+
     # ------------------------------------------------------------------ #
     def quote(self, symbol: str, use_case: str = "regular_only",
               now: Optional[datetime] = None, market: str = "") -> Quote:
@@ -142,7 +153,7 @@ class QuoteGateway:
 
         if not self.enabled:
             self.stats.passthrough += 1
-            return self.broker.get_quote(symbol)
+            return self._fetch(symbol)
 
         clock = self._clock_for(symbol, market)
         if clock is None:
@@ -151,7 +162,7 @@ class QuoteGateway:
             raise QuoteUnavailable(f"{symbol} 没有可用的交易所时钟，无法判定时段")
 
         try:
-            raw = self.broker.get_quote(symbol)
+            raw = self._fetch(symbol)
         except BrokerError:
             raise
         except Exception as exc:
@@ -202,5 +213,12 @@ class QuoteGateway:
         return self._normalizer.last(symbol.upper())
 
     def snapshot(self) -> Dict[str, Any]:
-        return {"enabled": self.enabled, "stats": self.stats.as_dict(),
-                "tracked": len(self._tags)}
+        out = {"enabled": self.enabled, "stats": self.stats.as_dict(),
+               "tracked": len(self._tags),
+               "source": "provider" if self.provider is not None else "broker"}
+        if self.provider is not None and hasattr(self.provider, "health"):
+            try:
+                out["provider_health"] = self.provider.health()
+            except Exception as exc:  # noqa: BLE001
+                out["provider_health"] = {"error": str(exc)}
+        return out

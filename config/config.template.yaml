@@ -749,3 +749,51 @@ paper_runtime:
     max_auto_recoveries: 3
     # 心跳超时（秒）：超过即认为进程失联
     heartbeat_timeout_seconds: 30
+
+# =============================================================================
+# 真实行情接入层（US-REAL-DATA）
+# =============================================================================
+# 安全约束：
+#   * 默认 enabled: false —— 不配置、不启用时系统行为与之前完全一致
+#   * **绝不**在本文件写 API Key / Token / 密码，只写环境变量名
+#   * 供应商提供的事件只有在注册为"交易所原生 + 已验证签名"后，才允许改变
+#     交易状态（见 market/providers/authority.py）
+#   * 本轮调查结论：所有自助供应商都没有消息签名 → 默认
+#     require_signature_for_resume=true，未签名事件一律不能恢复交易
+# =============================================================================
+market_data_providers:
+
+  enabled: false
+
+  # 启用的适配器：massive / alpaca / databento / nasdaq_itch / recorded
+  active: []
+
+  # 数据质量阈值（秒）
+  max_age_seconds: 60
+  max_future_seconds: 5
+
+  # 恢复事件是否必须带可验证签名（**不要改成 false**，除非已接入签名验证）
+  require_signature_for_resume: true
+
+  providers:
+
+    massive:
+      api_key_env: MASSIVE_API_KEY       # 只写变量名，不写值
+      time_unit: ns                      # 文档同时出现 ns 与 ms，必须显式指定
+      plan: stocks_advanced              # 实时全市场需要 Advanced（$199/月）
+      luld_expansion: false
+
+    alpaca:
+      key_id_env: ALPACA_KEY_ID
+      secret_env: ALPACA_SECRET_KEY
+      feed: sip                          # sip 需要 Algo Trader Plus；iex 为免费档
+      paper_only_iex_warning: true       # paper 账户可能只拿到 IEX
+
+    databento:
+      api_key_env: DATABENTO_API_KEY
+      dataset: XNAS.ITCH
+      schemas: [status, trades, mbp-1]
+
+    recorded:
+      fixture_dir: tests/fixtures/marketdata
+      replay_clock: true
