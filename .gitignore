@@ -1,0 +1,52 @@
+# ---- 密钥与环境（绝不入库）----
+.env
+.env.*
+!.env.example
+data/vault.json
+data/*.enc
+dist/
+*.pem
+*.key
+
+# ---- 运行期数据 ----
+data/audit.db
+data/audit.db-wal
+data/audit.db-shm
+data/paper_state.json
+data/stops.json
+data/backups/
+logs/
+*.jsonl
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ---- SDK 源码（作为外部依赖克隆，不入本仓库）----
+sdk_src/
+
+# ---- 编辑器 / 系统 ----
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+
+# ---- 内部备份目录（外部已有完整备份）----
+backups/
+
+# ---- 运行期数据库与状态文件（审计补：源码库不纳入运行数据）----
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/*.json
+
+# ---- 审计探针输出（日志/JSON，属运行产物）----
+audit_evidence/

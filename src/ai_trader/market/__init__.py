@@ -1,0 +1,63 @@
+"""市场基础能力：交易所时钟（US-P0-1）、交易规则（B4）与实时行情推送（B5）。"""
+from .clock import (
+    PHASE_CLOSED,
+    PHASE_HOLIDAY,
+    PHASE_NIGHT,
+    PHASE_POST,
+    PHASE_PRE,
+    PHASE_REGULAR,
+    PHASE_WEEKEND,
+    TZ_BY_MARKET,
+    ClockError,
+    ExchangeClock,
+    SessionInfo,
+    SessionWindow,
+    build_clock,
+)
+from .feed import (
+    FeedConfig,
+    FeedState,
+    MarketFeed,
+    QuoteTick,
+    parse_ts,
+)
+from .rules import (
+    CODE_CALENDAR,
+    CODE_LOT_SIZE,
+    CODE_NO_PRICE_LIMIT_DATA,
+    CODE_PRICE_LIMIT,
+    CODE_PRICE_TICK,
+    CODE_MARKET_NOT_ENFORCED,
+    CODE_RULE_UNKNOWN,
+    CODE_RULE_UNVERIFIED,
+    CODE_SELLABLE,
+    CODE_SESSION,
+    CODE_SUSPENDED,
+    CODE_T_PLUS,
+    STATUS_UNKNOWN,
+    STATUS_UNVERIFIED,
+    STATUS_VERIFIED,
+    BoardRule,
+    MarketRuleSet,
+    RuleCheckResult,
+    RuleMeta,
+    RuleViolation,
+    TradingCalendar,
+    round_price,
+)
+
+__all__ = [
+    # 交易所时钟（US-P0-1）
+    "PHASE_PRE", "PHASE_REGULAR", "PHASE_POST", "PHASE_NIGHT",
+    "PHASE_CLOSED", "PHASE_WEEKEND", "PHASE_HOLIDAY",
+    "TZ_BY_MARKET", "ClockError", "ExchangeClock", "SessionInfo",
+    "SessionWindow", "build_clock",
+    "FeedConfig", "FeedState", "MarketFeed", "QuoteTick", "parse_ts",
+    "CODE_CALENDAR", "CODE_LOT_SIZE", "CODE_NO_PRICE_LIMIT_DATA", "CODE_PRICE_LIMIT",
+    "CODE_PRICE_TICK", "CODE_MARKET_NOT_ENFORCED",
+    "CODE_RULE_UNKNOWN", "CODE_RULE_UNVERIFIED", "CODE_SELLABLE", "CODE_SESSION",
+    "CODE_SUSPENDED", "CODE_T_PLUS",
+    "STATUS_UNKNOWN", "STATUS_UNVERIFIED", "STATUS_VERIFIED",
+    "BoardRule", "MarketRuleSet", "RuleCheckResult", "RuleMeta", "RuleViolation",
+    "TradingCalendar", "round_price",
+]

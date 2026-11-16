@@ -1,0 +1,647 @@
+# =============================================================================
+# 星财富 · 单 AI 自动交易系统 —— 配置模板（基线副本）
+# 由 config/config.yaml 同步生成，供 VPS 重建时 bootstrap 使用。
+# ⚠️ 本文件必须与 config.yaml 的**非注释内容**保持一致
+#    （tests/test_us_p1_batch1.py 会逐键比对，防止模板落后于生产）。
+# 密钥请勿写入本文件，
+# 一律通过 .env（本地）或 DPAPI 保险箱（VPS）注入。
+# =============================================================================
+
+system:
+  name: "FosunAI-Trading"
+  mode: "paper"                 # paper | readonly_live | live  （默认 paper）
+  timezone: "Asia/Shanghai"
+  data_dir: "data"
+  log_dir: "logs"
+
+# -----------------------------------------------------------------------------
+# 三重安全开关（默认全部为安全态）
+#   LIVE_TRADING=true          才允许建立真实券商会话
+#   ORDER_EXECUTION_ENABLED=true 才允许真实下单/撤单
+#   PAPER_TRADING=true         使用本地模拟撮合
+# 真实交易必须三者同时满足 + 风控放行 + kill switch 未触发
+# -----------------------------------------------------------------------------
+safety:
+  live_trading: false
+  order_execution_enabled: false
+  paper_trading: true
+  kill_switch: false
+  # 真实交易额外必须显式确认的字符串，防止"顺手打开"
+  live_ack_phrase: ""
+  required_live_ack: "I UNDERSTAND REAL MONEY IS AT RISK"
+
+markets:
+  hk:  { enabled: true,  currency: "HKD", lot_default: 100 }
+  us:  { enabled: true,  currency: "USD", lot_default: 1 }
+  cn:  { enabled: true,  currency: "CNY", lot_default: 100 }   # A股通
+
+universe:
+  # 观察标的（格式 marketCode + stockCode，与星财富 SDK 一致）
+  - { code: "hk00700", name: "腾讯控股",  market: "hk" }
+  - { code: "hk09988", name: "阿里巴巴-W", market: "hk" }
+  - { code: "usAAPL",  name: "Apple",     market: "us" }
+  - { code: "usNVDA",  name: "NVIDIA",    market: "us" }
+  - { code: "usTSLA",  name: "Tesla",     market: "us" }
+
+ai:
+  provider: "heuristic"         # heuristic | openai_compatible
+  # provider=openai_compatible 时使用下列配置（DeepSeek / OpenAI / 任意兼容端点）
+  openai_compatible:
+    base_url: "https://api.deepseek.com/v1"
+    model: "deepseek-chat"
+    api_key_env: "AI_API_KEY"   # 只存环境变量名，不存密钥本身
+    temperature: 0.2
+    max_tokens: 1200
+    timeout_seconds: 60
+  # 模型输出强约束：任何越界结论都会被风控拒绝
+  constraints:
+    min_confidence: 0.60
+    require_stop_loss: true
+    max_position_pct: 0.15
+  # ---- AI 决策权威（审计 P1-9）----
+  # true = 只有真正的 AI 模型才能产生开仓信号；规则引擎只能提供指标。
+  # 设为 false 等于允许"规则引擎自动交易"，与本系统定位不符，不建议。
+  require_ai_for_entry: true
+  # 信号有效期：超过该秒数的信号直接丢弃（防止 AI 恢复后执行失效期间的旧信号）
+  signal_ttl_seconds: 300
+  # 连续失败多少次后进入冷却期，以及冷却时长（冷却期内禁止新开仓）
+  max_consecutive_failures: 3
+  failure_cooldown_seconds: 120
+
+risk:
+  # 账户级
+  max_gross_exposure_pct: 0.60      # 总持仓市值 / 净值 上限
+  max_positions: 8                  # 同时持仓标的数上限
+  max_position_pct: 0.15            # 单标的最大占比
+  max_order_notional: 50000         # 单笔委托金额上限（账户本币）
+  min_order_notional: 100           # 单笔最小金额，过滤碎单
+  # 单笔风险
+  risk_per_trade_pct: 0.01          # 单笔最大亏损 = 净值 * 1%
+  max_stop_distance_pct: 0.12       # 止损距离过宽直接拒绝
+  # 日内
+  max_daily_loss_pct: 0.03          # 单日最大亏损 3%，触发即停手
+  max_daily_trades: 20              # 单日成交笔数上限
+  max_daily_orders: 40              # 单日委托笔数上限
+  # 重复订单 / 频率
+  duplicate_window_seconds: 300     # 同标的同方向冷却窗口
+  max_orders_per_minute: 5
+  # 订单存活时间：超过则自动撤单（0 = 关闭该功能）
+  order_timeout_seconds: 600
+  # 价格合理性
+  max_price_deviation_pct: 0.05     # 委托价偏离最新价超过 5% 拒绝
+  # 订单时间戳体检（US-P1 N-4）：超过这个偏差的历史时间戳视为异常，
+  # 不计入冷却窗口并写故障告警（防止系统时钟回拨永久卡死止损）
+  max_clock_skew_seconds: 300
+  # 急停哨兵"写失败"时的减仓处置：
+  #   block        = 一律阻断（默认，最安全）
+  #   reduce_only  = 允许受限减仓（需通过持仓核实/数量限制/防反向开仓校验，且必须人工审批）
+  halt_write_failure_exit_mode: "block"
+  # 交易时段
+  enforce_market_hours: true
+  allow_short: false
+  allow_margin: false
+
+strategy:
+  scan_interval_seconds: 300
+  kline_ktype: "day"
+  kline_num: 120
+  # 均线趋势预筛（先做廉价技术过滤，再交给 AI）
+  trend_filter:
+    enabled: true
+    fast_ma: 20
+    slow_ma: 60
+    min_atr_pct: 0.005
+
+paper:
+  initial_cash:
+    HKD: 1000000
+    USD: 130000
+    CNY: 700000
+  commission_bps: 8          # 万分之 8
+  min_commission: 3
+  slippage_bps: 5
+  # 模拟撮合：限价单是否允许穿越成交
+  allow_partial_fill: true
+
+web:
+  host: "127.0.0.1"
+  port: 8781
+  session_secret_env: "WEB_SESSION_SECRET"
+  # 只读浏览口令（可选，不设则仅本机访问不鉴权）
+  admin_password_env: "WEB_ADMIN_PASSWORD"
+
+fosun:
+  # 官方 SDK 网关地址，由星财富开放平台下发
+  base_url: ""
+  api_key_env: "FSOPENAPI_API_KEY"
+  sdk_type: "ops"               # "" = /api 前缀；"ops" = /api/ops 前缀
+  lang: "zhCn"
+  ssl_verify: true
+  # 密钥来源: env（环境变量 PEM）| vault（DPAPI 保险箱）
+  key_source: "vault"
+  # HTTP 超时（秒）：SDK 自己不设 timeout，由适配器在实例级注入
+  http_connect_timeout: 10
+  http_read_timeout: 30
+  # 只读操作的重试次数（下单永不重试）
+  read_retry_attempts: 2
+  # 行情加密兜底：auto=POST 行情解密失败时改用官方 GET /v1/market/min；off=关闭
+  market_encryption_workaround: "auto"
+  sub_account_id: ""
+  apply_account_id: ""
+  # 美股持仓查询是否覆盖盘前/盘后/夜盘（US-P0-3）
+  # 官方接口 /v1/portfolio/Holdings 的 useUsPre / useUsPost / useUsNight 三个布尔参数。
+  # 默认**全部 true**：漏掉某一段就等于漏掉一段敞口（风控会以为没有持仓）。
+  # 关掉任何一项都会在 health().position_sessions.warning 里显式报出来。
+  position_sessions:
+    use_us_pre: true
+    use_us_post: true
+    use_us_night: true
+
+audit:
+  db_path: "data/audit.db"
+  jsonl_path: "logs/audit.jsonl"
+  hash_chain: true
+  retention_days: 365
+
+
+
+# =============================================================================
+
+# 交易规则（B4）—— 全部配置化，带来源与生效日期
+
+#   * 涨跌幅/最小单位随板块与证券状态不同，**不要**合并成一个全局比例
+
+#   * 规则会变（例：2026-07-06 沪深主板 ST 股涨跌幅 5% → 10%），故带 effective_from
+
+#   * status: VERIFIED / UNVERIFIED / UNKNOWN；UNKNOWN 一律拒绝交易
+
+#   * source_tier: primary（交易所原文）/ secondary（权威媒体转述）/ none
+
+# =============================================================================
+
+market_rules:
+
+  # 两个总闸：任一为 false，规则层整体失效（配置守卫会在启动时拒绝）
+  enabled: true
+
+  enforce: true
+
+  # 只对下列市场强制校验；未列出的市场不做规则校验，并在 status 里标注 not_modeled
+  # US-P0-2：us 已纳入强制校验（价格精度/数量/时段/日历都要真正生效）。
+  #          cn 保留，用于 A 股通历史回归。
+
+  enforce_markets: ["cn", "us"]
+
+  # 必须被强制校验的市场（启动守卫据此判定；US-P1 配置守卫）
+  required_markets: ["us"]
+
+  # 市场未纳入 enforce_markets 时的处置：
+  #   warn   = 标注"未建模"后放行（历史行为，**不安全**）
+  #   reject = 直接拒绝（fail-closed）
+  # US-P1：已改为 reject —— 规则未建模的市场不允许交易。
+
+  unenforced_market_policy: "reject"
+
+  # 是否允许用 UNVERIFIED 规则交易（默认 false = 拒绝）
+
+  allow_unverified_rules: false
+
+  # 交易时段（US-P0-1）：**一律以交易所当地时间为准**，DST/冬令时由 zoneinfo 处理。
+  # 严禁再写"北京时间 21:30-04:00"这种换算后的硬编码窗口。
+
+  sessions:
+
+    us:
+
+      tz: "America/New_York"
+
+      regular: [["09:30", "16:00"]]
+
+      pre: ["04:00", "09:30"]
+
+      post: ["16:00", "20:00"]
+
+      night: ["20:00", "04:00"]     # 跨当地午夜；券商是否支持夜盘另行确认
+
+      # 盘前/盘后/夜盘是否允许**新开仓**（false = 只在常规时段开新仓；减仓不受限）
+
+      extended_tradable: false
+
+    hk:
+
+      tz: "Asia/Hong_Kong"
+
+      regular: [["09:30", "12:00"], ["13:00", "16:00"]]
+
+    cn:
+
+      tz: "Asia/Shanghai"
+
+      regular: [["09:30", "11:30"], ["13:00", "15:00"]]
+
+
+
+  boards:
+
+    cn_main:
+
+      name: "沪深主板（普通股）"
+
+      market: cn
+
+      price_limit_pct: 0.10
+
+      lot_size: 100
+
+      buy_increment: 100
+
+      sell_odd_lot: all_at_once
+
+      t_plus: 1
+
+      meta:
+
+        status: VERIFIED
+
+        source: "沪深北《交易规则(2026年修订)》2026-04-24 发布 / 2026-07-06 实施；央视网、中国经济网 2026-07-06 报道"
+
+        effective_from: "2026-07-06"
+
+        source_tier: secondary
+
+        note: "二级来源，未取得交易所原文；主板普通股 ±10%"
+
+    cn_st_main:
+
+      name: "沪深主板（ST/*ST）"
+
+      market: cn
+
+      price_limit_pct: 0.10
+
+      lot_size: 100
+
+      buy_increment: 100
+
+      sell_odd_lot: all_at_once
+
+      t_plus: 1
+
+      meta:
+
+        status: VERIFIED
+
+        source: "同上；2026-07-06 起主板风险警示股涨跌幅由 ±5% 调整为 ±10%"
+
+        effective_from: "2026-07-06"
+
+        source_tier: secondary
+
+        note: "2026-07-06 之前为 ±5%，历史回测需按日期切换"
+
+    cn_star:
+
+      name: "科创板（688）"
+
+      market: cn
+
+      price_limit_pct: 0.20
+
+      lot_size: 200
+
+      buy_increment: 1
+
+      sell_odd_lot: all_at_once
+
+      t_plus: 1
+
+      meta:
+
+        status: VERIFIED
+
+        source: "同上；科创板 ±20%，申报 200 股起、1 股递增"
+
+        effective_from: "2026-07-06"
+
+        source_tier: secondary
+
+        note: "新股上市前 5 个交易日无涨跌幅限制，本表未按上市日区分"
+
+    cn_st_star:
+
+      name: "科创板（ST/*ST）"
+
+      market: cn
+
+      price_limit_pct: 0.20
+
+      lot_size: 200
+
+      buy_increment: 1
+
+      sell_odd_lot: all_at_once
+
+      t_plus: 1
+
+      meta:
+
+        status: VERIFIED
+
+        source: "同上；科创板风险警示股 ±20%"
+
+        effective_from: "2026-07-06"
+
+        source_tier: secondary
+
+        note: ""
+
+    cn_chinext:
+
+      name: "创业板（300/301）"
+
+      market: cn
+
+      price_limit_pct: 0.20
+
+      lot_size: 100
+
+      buy_increment: 100
+
+      sell_odd_lot: all_at_once
+
+      t_plus: 1
+
+      meta:
+
+        status: VERIFIED
+
+        source: "同上；创业板 ±20%"
+
+        effective_from: "2026-07-06"
+
+        source_tier: secondary
+
+        note: "新股上市前 5 个交易日无涨跌幅限制，本表未按上市日区分"
+
+    cn_st_chinext:
+
+      name: "创业板（ST/*ST）"
+
+      market: cn
+
+      price_limit_pct: 0.20
+
+      lot_size: 100
+
+      buy_increment: 100
+
+      sell_odd_lot: all_at_once
+
+      t_plus: 1
+
+      meta:
+
+        status: VERIFIED
+
+        source: "同上；创业板风险警示股 ±20%"
+
+        effective_from: "2026-07-06"
+
+        source_tier: secondary
+
+        note: ""
+
+    cn_bj:
+
+      name: "北交所（43/83/87/92 等）"
+
+      market: cn
+
+      price_limit_pct: 0.30
+
+      lot_size: 100
+
+      buy_increment: 100
+
+      sell_odd_lot: all_at_once
+
+      t_plus: 1
+
+      meta:
+
+        status: VERIFIED
+
+        source: "同上；北交所 ±30%"
+
+        effective_from: "2026-07-06"
+
+        source_tier: secondary
+
+        note: "新股上市首个交易日无涨跌幅限制"
+
+    hk:
+
+      name: "港股"
+
+      market: hk
+
+      price_limit_pct: null
+
+      lot_size: 1
+
+      buy_increment: 1
+
+      sell_odd_lot: any
+
+      t_plus: 0
+
+      not_modeled: ["lot_size_per_symbol", "price_limit", "settlement"]
+
+      meta:
+
+        status: UNVERIFIED
+
+        source: ""
+
+        effective_from: ""
+
+        source_tier: none
+
+        note: "每手股数因标的而异，未建模；无涨跌幅限制（市调机制未建模）"
+
+    us:
+
+      name: "美股（NYSE / Nasdaq NMS）"
+
+      market: us
+
+      # 美股没有交易所层面的固定涨跌幅（LULD 价格带未取得官方条款，见 not_modeled）
+      price_limit_pct: null
+
+      lot_size: 1
+
+      buy_increment: 1
+
+      sell_odd_lot: any
+
+      # 美股当日买入当日可卖（T+0 交易；结算为 T+1，见 not_modeled.settlement）
+      t_plus: 0
+
+      # 最小报价单位：17 CFR 242.612
+      #   ≥ $1.00 → $0.01（另有逐股 TWAS ≤ $0.015 时 $0.005 档，需数据源，未启用）
+      #   <  $1.00 → $0.0001
+      tick_size: 0.01
+
+      tick_size_below_1: 0.0001
+
+      tick_size_half_cent: []
+
+      not_modeled: ["luld", "settlement_t1_funds", "mwcb", "short_sale_ssr", "order_types", "pdt"]
+
+      meta:
+
+        status: VERIFIED
+
+        source: "交易时段/2026 节假日/提前收市：NYSE 官方 Holidays & Trading Hours 页（https://www.nyse.com/markets/hours-calendars，页面注明 All times are Eastern Time）；最小报价单位：17 CFR 242.612(b)(2)(i)(ii),(b)(3),(c)；结算 T+1：17 CFR 240.15c6-1(a)"
+
+        effective_from: "2026-01-06"
+
+        source_tier: primary
+
+        note: "时段/节假日/tick/T+1 条款均已核对一手来源。未建模：LULD 价格带、MWCB 熔断、SSR、订单类型/TIF、PDT、T+1 资金可用性 —— 这些不在本系统里做假校验。"
+
+
+
+  # 前缀 → 板块（顺序匹配，先命中先用；更具体的写前面）
+
+  symbol_prefixes:
+
+    - { prefix: "cn688", board: cn_star }
+
+    - { prefix: "sh688", board: cn_star }
+
+    - { prefix: "cn300", board: cn_chinext }
+
+    - { prefix: "cn301", board: cn_chinext }
+
+    - { prefix: "sz300", board: cn_chinext }
+
+    - { prefix: "sz301", board: cn_chinext }
+
+    - { prefix: "cn43",  board: cn_bj }
+
+    - { prefix: "cn83",  board: cn_bj }
+
+    - { prefix: "cn87",  board: cn_bj }
+
+    - { prefix: "cn92",  board: cn_bj }
+
+    - { prefix: "cn6",   board: cn_main }
+
+    - { prefix: "cn0",   board: cn_main }
+
+    - { prefix: "sh6",   board: cn_main }
+
+    - { prefix: "sz0",   board: cn_main }
+
+    - { prefix: "hk",    board: hk }
+
+    - { prefix: "us",    board: us }
+
+
+
+  # ST/*ST 等特殊状态需人工登记（系统无法从代码判断）
+
+  st_symbols: {}
+
+  # 停牌标的：任一方向都禁止
+
+  suspended_symbols: []
+
+
+
+  # 交易日历：节假日表**不内置**（离线无法核实）
+
+  # 录入：把交易所公告的休市日填入对应市场，再把该市场的 status 改成 VERIFIED
+
+  # US-P0：支持分市场日历（markets.<mkt>）。covered_until 之后的日期一律拒绝 ——
+
+  #        "没登记"不等于"是交易日"。
+
+  calendar:
+
+    status: UNKNOWN          # 顶层默认（cn 等未单独配置的市场沿用）
+
+    strict: true
+
+    source: ""
+
+    effective_from: ""
+
+    markets:
+
+      us:
+
+        status: VERIFIED
+
+        source: "NYSE Holidays & Trading Hours（https://www.nyse.com/markets/hours-calendars）2026 年休市日与提前收市；页面注明 All times are Eastern Time"
+
+        effective_from: "2026-01-01"
+
+        covered_from: "2026-01-01"
+
+        covered_until: "2026-12-31"
+
+        holidays:
+
+          - "2026-01-01"   # New Year's Day
+
+          - "2026-01-19"   # Martin Luther King, Jr. Day
+
+          - "2026-02-16"   # Washington's Birthday
+
+          - "2026-04-03"   # Good Friday
+
+          - "2026-05-25"   # Memorial Day
+
+          - "2026-06-19"   # Juneteenth
+
+          - "2026-07-03"   # Independence Day (observed)
+
+          - "2026-09-07"   # Labor Day
+
+          - "2026-11-26"   # Thanksgiving Day
+
+          - "2026-12-25"   # Christmas Day
+
+        early_close:            # 1:00 p.m. ET 提前收市
+
+          "2026-11-27": "13:00"  # 感恩节次日
+
+          "2026-12-24": "13:00"  # 平安夜
+
+    holidays:
+
+      cn: []
+
+# =============================================================================
+# 实时行情推送（B5）
+#   SDK 的 market_push 只有 connect/subscribe/heartbeat，没有重连/去重/时间戳校验；
+#   本工程在 market/feed.py 里补齐，并在此配置。
+#   * enabled=false 时不接推送，开仓不依赖推送（paper 模拟盘默认如此）
+#   * 真实推送需要开放平台行情权限 + ws 地址，未取得凭证前保持 false
+# =============================================================================
+market_feed:
+  enabled: false
+  url: ""                       # 例：wss://<gateway>/msg/v1/push
+  topics: ["qt"]
+  codes: []                     # 留空则订阅 universe 中的标的
+  # 启用推送后：行情不新鲜 / 连接断开 时禁止新开仓（已有持仓的止损不受影响）
+  required_for_entry: true
+  enforce_markets: ["cn"]
+  heartbeat_timeout_seconds: 10
+  stale_after_seconds: 5
+  reconnect_initial_seconds: 0.2
+  reconnect_max_seconds: 5
+  max_reconnect_attempts: 0     # 0 = 无限重连
+  settle_updates: 1             # 重连后需收到几条新行情才认为数据可信

@@ -1,0 +1,24 @@
+# ---- 星财富官方 SDK 依赖 (fsopenapi setup.py install_requires) ----
+requests>=2.28.0
+cryptography>=41.0.0
+# 生产依赖：行情推送认证头依赖 connect(logger=/additional_headers=)
+# 这组参数在 13.x 起稳定；低于 13 无 logger 注入，DEBUG 级别会打印认证头。
+websockets>=13.0,<18
+protobuf>=4.0.0
+
+# ---- Web 管理界面 ----
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+jinja2>=3.1.0
+python-multipart>=0.0.9
+
+# ---- 配置 ----
+PyYAML>=6.0
+
+# ---- 交易时段时区数据（US-P0-1）----
+# Windows 不自带 IANA tzdb，zoneinfo.ZoneInfo("America/New_York") 会抛
+# ZoneInfoNotFoundError，必须装这个纯数据包（无代码执行）。
+tzdata>=2024.1
+
+# ---- 本工程测试 ----
+pytest>=8.0.0

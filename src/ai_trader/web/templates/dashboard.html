@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FosunAI-Trading · 管理台</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --panel:#ffffff; --line:#e4e7ec; --ink:#1a1d23; --muted:#6b7280;
+    --accent:#2f6df6; --ok:#0f8a52; --warn:#b45309; --bad:#c0392b; --chip:#eef1f6;
+    --mono:"Cascadia Mono","Consolas","SFMono-Regular",monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:14px/1.55 -apple-system,"Segoe UI","Microsoft YaHei",system-ui,sans-serif}
+  header{position:sticky;top:0;z-index:9;background:#fff;border-bottom:1px solid var(--line);
+         padding:12px 22px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+  header h1{font-size:15px;margin:0 14px 0 0;letter-spacing:.4px}
+  .badge{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px;
+         font-size:12px;background:var(--chip);color:#374151;border:1px solid var(--line)}
+  .badge.ok{background:#e8f6ee;color:var(--ok);border-color:#c3e8d3}
+  .badge.warn{background:#fef3e2;color:var(--warn);border-color:#f7ddb5}
+  .badge.bad{background:#fdecea;color:var(--bad);border-color:#f5c6c0}
+  main{padding:18px 22px 60px;max-width:1500px;margin:0 auto}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+          margin-bottom:16px;overflow:hidden}
+  section > h2{font-size:13px;margin:0;padding:11px 16px;border-bottom:1px solid var(--line);
+               background:#fafbfc;color:#4b5563;font-weight:600;letter-spacing:.3px;
+               display:flex;justify-content:space-between;align-items:center}
+  .body{padding:14px 16px}
+  .grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+  .card{border:1px solid var(--line);border-radius:8px;padding:11px 13px;background:#fcfcfd}
+  .card .k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
+  .card .v{font:600 19px/1.3 var(--mono);margin-top:4px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th,td{padding:7px 10px;text-align:left;border-bottom:1px solid #f0f2f5;white-space:nowrap}
+  th{color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.5px;
+     background:#fbfcfd;position:sticky;top:0}
+  tbody tr:hover{background:#fafbff}
+  .scroll{max-height:330px;overflow:auto}
+  .num{font-family:var(--mono);text-align:right}
+  .up{color:var(--bad)}   /* 中式配色：涨=红 */
+  .down{color:var(--ok)}  /* 跌=绿 */
+  .mono{font-family:var(--mono)}
+  .muted{color:var(--muted)}
+  .tag{display:inline-block;padding:1px 7px;border-radius:5px;font-size:11px;
+       background:var(--chip);font-family:var(--mono)}
+  .tag.buy{background:#fdecea;color:var(--bad)}
+  .tag.sell{background:#e8f6ee;color:var(--ok)}
+  .tag.hold{background:#eef1f6;color:#4b5563}
+  .tag.filled{background:#e8f6ee;color:var(--ok)}
+  .tag.submitted{background:#fef3e2;color:var(--warn)}
+  .tag.cancelled,.tag.rejected{background:#f1f2f4;color:#6b7280}
+  .btns{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  button{cursor:pointer;border:1px solid var(--line);background:#fff;border-radius:7px;
+         padding:7px 13px;font-size:12.5px;color:var(--ink);transition:.12s}
+  button:hover{border-color:#c7ced8;background:#fafbfd}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  button.primary:hover{background:#255fd8}
+  button.danger{background:#fff;border-color:#f0b8b0;color:var(--bad)}
+  button.danger:hover{background:#fdecea}
+  input[type=text],input[type=password]{border:1px solid var(--line);border-radius:7px;
+         padding:7px 10px;font-size:12.5px;width:230px;font-family:var(--mono)}
+  pre{background:#0f172a;color:#d6e2f0;padding:12px;border-radius:8px;overflow:auto;
+      font:11.5px/1.5 var(--mono);max-height:340px;margin:0}
+  .kv{display:grid;grid-template-columns:170px 1fr;gap:5px 12px;font-size:12.5px}
+  .kv .k{color:var(--muted)}
+  .kv .v{font-family:var(--mono);overflow-wrap:anywhere}
+  #toast{position:fixed;right:20px;bottom:20px;background:#111827;color:#fff;padding:10px 15px;
+         border-radius:8px;font-size:12.5px;opacity:0;transition:.2s;max-width:520px;z-index:99}
+  #toast.show{opacity:1}
+  .foot{color:var(--muted);font-size:11.5px;text-align:center;padding:8px}
+  .warnbox{background:#fef3e2;border:1px solid #f7ddb5;color:#7c4a03;padding:10px 13px;
+           border-radius:8px;font-size:12.5px;margin-bottom:12px}
+</style>
+</head>
+<body>
+<header>
+  <h1>FosunAI-Trading</h1>
+  <span class="badge {{ 'ok' if status.safety.paper_trading else 'warn' }}">
+    模式 {{ status.mode }}
+  </span>
+  <span class="badge {{ 'bad' if status.safety.kill_switch else 'ok' }}">
+    紧急停止 {{ '已触发' if status.safety.kill_switch else '未触发' }}
+  </span>
+  <span class="badge {{ 'ok' if status.safety.live_authorized else 'warn' }}">
+    真实连接 {{ '允许' if status.safety.live_authorized else '禁止' }}
+  </span>
+  <span class="badge {{ 'ok' if status.safety.real_order_authorized else 'warn' }}">
+    真实下单 {{ '允许' if status.safety.real_order_authorized else '禁止' }}
+  </span>
+  <span class="badge">券商 {{ status.broker.kind }}</span>
+  <span class="badge {{ 'ok' if status.ai.available else 'warn' }}">
+    AI {{ status.ai.model_id }} · {{ status.ai.status }}
+  </span>
+  {% set auth = status.authority %}
+  <span class="badge {{ 'ok' if (auth.can_trade and auth.available and not auth.degraded) else 'bad' }}">
+    开仓权限 {{ '有' if (auth.can_trade and auth.available and not auth.degraded) else '无' }}
+  </span>
+  <span class="badge {{ 'ok' if status.audit.chain.ok else 'bad' }}">
+    审计链 {{ '完整' if status.audit.chain.ok else '断链' }} ({{ status.audit.chain.total }})
+  </span>
+  <span style="flex:1"></span>
+  <a href="/logout" class="muted" style="font-size:12px">退出</a>
+</header>
+
+<main>
+{% if status.safety.kill_switch %}
+<div class="warnbox" style="background:#fdecea;border-color:#f5c6c0;color:#8a2318">
+  <strong>系统处于停止状态</strong> —— 来源 <code>{{ status.safety.halt_source }}</code>
+  {% if status.safety.halt_reason %}· 原因：{{ status.safety.halt_reason }}{% endif %}
+  {% if status.safety.halt_at %}· 时间：{{ status.safety.halt_at }}{% endif %}
+  <div style="margin-top:6px;font-size:11.5px">
+    该状态已持久化到 <code>data/HALT.json</code>，重启后依然生效。
+    解除需人工输入确认短语 <code>RESUME-TRADING</code>。
+  </div>
+</div>
+{% endif %}
+{% if status.safety.halt_store_failed %}
+<div class="warnbox" style="background:#fdecea;border-color:#f5c6c0;color:#8a2318">
+  <strong>急停哨兵异常</strong> —— 无法确认停止状态是否可靠，系统已拒绝一切交易。
+</div>
+{% endif %}
+{% if status.ai_fallback_reason %}
+<div class="warnbox"><strong>AI 状态提示：</strong>{{ status.ai_fallback_reason }}</div>
+{% endif %}
+{% set auth = status.authority %}
+{% if not auth.available or not auth.can_trade or auth.degraded %}
+<div class="warnbox" style="background:#fdecea;border-color:#f5c6c0;color:#8a2318">
+  <strong>当前禁止新开仓</strong>
+  {% if not auth.available %}· AI 不可用{% endif %}
+  {% if not auth.can_trade %}· 模型无开仓决策权（规则引擎只能提供指标）{% endif %}
+  {% if auth.degraded %}· 故障冷却中（截止 {{ auth.degraded_until }}）{% endif %}
+  {% if auth.last_code %}· 最后错误码 <code>{{ auth.last_code }}</code>{% endif %}
+  {% if auth.last_reason %}· {{ auth.last_reason }}{% endif %}
+  <div style="margin-top:6px;font-size:11.5px">
+    已有持仓不受影响：止损/止盈仍由 <code>monitor</code> 的独立风控执行。
+    每次拒绝都会写入审计事件 <code>entry_blocked</code>。
+  </div>
+</div>
+{% endif %}
+
+<section>
+  <h2>运行控制
+    <span class="muted" style="font-weight:400;font-size:11.5px">
+      所有操作都会写入审计日志</span>
+  </h2>
+  <div class="body">
+    <div class="btns">
+      <input type="text" id="scanSymbols" placeholder="留空=全观察池，或用逗号分隔 hk00700,usAAPL">
+      <button class="primary" onclick="act('scan')">立即扫描</button>
+      <button onclick="act('monitor')">持仓监控（止损/止盈）</button>
+      <button class="danger" onclick="act('kill')">紧急停止</button>
+      <button onclick="act('resume')">恢复运行</button>
+      <button class="danger" onclick="act('reset')">重置模拟盘</button>
+    </div>
+    <div class="muted" style="margin-top:9px;font-size:11.5px">
+      观察池：{{ universe | join(' · ') }}
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>账户与权益</h2>
+  <div class="body">
+    {% if summaries %}
+    <div class="grid">
+      {% for s in summaries %}
+      <div class="card">
+        <div class="k">{{ s.currency }} 权益</div>
+        <div class="v">{{ '%.2f'|format(s.equity) }}</div>
+        <div class="muted" style="font-size:11.5px;margin-top:3px">
+          现金 {{ '%.2f'|format(s.cash) }} · 市值 {{ '%.2f'|format(s.market_value) }}
+        </div>
+        <div style="font-size:12px;margin-top:4px"
+             class="{{ 'up' if s.day_pnl >= 0 else 'down' }}">
+          当日 {{ '%+.2f'|format(s.day_pnl) }}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="muted">无账户数据（券商未连接或未返回）。</div>
+    {% endif %}
+  </div>
+</section>
+
+<section>
+  <h2>持仓 <span class="muted" style="font-weight:400">{{ positions|length }} 笔</span></h2>
+  <div class="scroll">
+    <table>
+      <thead><tr>
+        <th>标的</th><th>市场</th><th class="num">数量</th><th class="num">成本</th>
+        <th class="num">最新</th><th class="num">市值</th><th class="num">浮盈亏</th>
+        <th class="num">幅度</th><th>止损/止盈</th>
+      </tr></thead>
+      <tbody>
+      {% for p in positions %}
+        <tr>
+          <td class="mono">{{ p.symbol }}</td>
+          <td>{{ p.market }}</td>
+          <td class="num">{{ '%g'|format(p.qty) }}</td>
+          <td class="num">{{ '%.3f'|format(p.avg_cost) }}</td>
+          <td class="num">{{ '%.3f'|format(p.last_price) }}</td>
+          <td class="num">{{ '%.2f'|format(p.market_value) }}</td>
+          <td class="num {{ 'up' if p.unrealized_pnl >= 0 else 'down' }}">
+            {{ '%+.2f'|format(p.unrealized_pnl) }}</td>
+          <td class="num {{ 'up' if p.unrealized_pct >= 0 else 'down' }}">
+            {{ '%+.2f%%'|format(p.unrealized_pct * 100) }}</td>
+          <td class="mono muted">
+            {% set s = stops.get(p.symbol) %}
+            {% if s %}{{ s.stop_loss or '-' }} / {{ s.take_profit or '-' }}{% else %}—{% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="9" class="muted" style="padding:16px">暂无持仓</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>委托与成交
+    <button onclick="location.reload()" style="padding:3px 10px;font-size:11.5px">刷新</button>
+  </h2>
+  <div class="scroll">
+    <table>
+      <thead><tr>
+        <th>时间</th><th>标的</th><th>方向</th><th class="num">数量</th><th class="num">价格</th>
+        <th class="num">成交</th><th class="num">均价</th><th class="num">费用</th>
+        <th>状态</th><th>委托号</th><th>风控决策</th><th>操作</th>
+      </tr></thead>
+      <tbody>
+      {% for o in orders %}
+        <tr>
+          <td class="mono muted">{{ o.ts[11:19] }}</td>
+          <td class="mono">{{ o.symbol }}</td>
+          <td><span class="tag {{ o.side }}">{{ o.side }}</span></td>
+          <td class="num">{{ '%g'|format(o.qty) }}</td>
+          <td class="num">{{ '%.3f'|format(o.price) if o.price else '—' }}</td>
+          <td class="num">{{ '%g'|format(o.filled_qty or 0) }}</td>
+          <td class="num">{{ '%.3f'|format(o.avg_fill_price) if o.avg_fill_price else '—' }}</td>
+          <td class="num">{{ '%.2f'|format(o.commission or 0) }}</td>
+          <td><span class="tag {{ o.status }}">{{ o.status }}</span></td>
+          <td class="mono muted" style="font-size:11px">{{ o.order_id }}</td>
+          <td class="mono muted" style="font-size:11px">{{ o.decision_id or '—' }}</td>
+          <td>
+            {% if o.status in ('submitted', 'pending', 'partial', 'unknown') %}
+              <button style="padding:2px 8px;font-size:11px"
+                      onclick="cancelOrder('{{ o.order_id }}')">撤单</button>
+            {% else %}<span class="muted">—</span>{% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="12" class="muted" style="padding:16px">暂无委托</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>AI 信号</h2>
+  <div class="scroll">
+    <table>
+      <thead><tr>
+        <th>时间</th><th>标的</th><th>动作</th><th class="num">置信度</th>
+        <th class="num">入场</th><th class="num">止损</th><th class="num">止盈</th>
+        <th class="num">仓位</th><th>模型</th><th>理由</th>
+      </tr></thead>
+      <tbody>
+      {% for s in signals %}
+        <tr>
+          <td class="mono muted">{{ s.ts[11:19] }}</td>
+          <td class="mono">{{ s.symbol }}</td>
+          <td><span class="tag {{ s.action }}">{{ s.action }}</span></td>
+          <td class="num">{{ '%.2f'|format(s.confidence or 0) }}</td>
+          <td class="num">{{ '%.3f'|format(s.entry_price) if s.entry_price else '—' }}</td>
+          <td class="num">{{ '%.3f'|format(s.stop_loss) if s.stop_loss else '—' }}</td>
+          <td class="num">{{ '%.3f'|format(s.take_profit) if s.take_profit else '—' }}</td>
+          <td class="num">{{ '%.1f%%'|format((s.position_pct or 0) * 100) }}</td>
+          <td class="mono muted" style="font-size:11px">{{ s.provider }}/{{ s.model }}</td>
+          <td class="muted" style="white-space:normal;max-width:420px">{{ s.rationale or '' }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="10" class="muted" style="padding:16px">暂无信号</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>风控决策
+    <span class="muted" style="font-weight:400;font-size:11.5px">
+      拒绝 {{ decisions | rejectattr('approved') | list | length }} / {{ decisions|length }}
+    </span>
+  </h2>
+  <div class="scroll">
+    <table>
+      <thead><tr>
+        <th>时间</th><th>标的</th><th>动作</th><th>结果</th>
+        <th class="num">请求量</th><th class="num">放行量</th><th>理由</th>
+      </tr></thead>
+      <tbody>
+      {% for d in decisions %}
+        <tr>
+          <td class="mono muted">{{ d.ts[11:19] }}</td>
+          <td class="mono">{{ d.symbol }}</td>
+          <td><span class="tag {{ d.action }}">{{ d.action }}</span></td>
+          <td>
+            <span class="badge {{ 'ok' if d.approved else 'bad' }}"
+                  style="padding:1px 8px">{{ '放行' if d.approved else '拒绝' }}</span>
+          </td>
+          <td class="num">{{ '%g'|format(d.requested_qty or 0) }}</td>
+          <td class="num">{{ '%g'|format(d.approved_qty or 0) }}</td>
+          <td class="muted" style="white-space:normal;max-width:560px;font-size:11.5px">
+            {{ (d.reasons | from_json | join('；')) if d.reasons else '' }}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7" class="muted" style="padding:16px">暂无风控决策</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>风控限额与运行状态</h2>
+  <div class="body grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
+    <div class="kv">
+      {% for k, v in status.risk.items() %}
+        <div class="k">{{ k }}</div><div class="v">{{ v }}</div>
+      {% endfor %}
+    </div>
+    <div class="kv">
+      {% for k, v in status.safety.items() %}
+        <div class="k">safety.{{ k }}</div><div class="v">{{ v }}</div>
+      {% endfor %}
+      <div class="k">审计记录数</div>
+      <div class="v">{{ status.audit.counts }}</div>
+      <div class="k">保险箱</div>
+      <div class="v">DPAPI={{ status.vault.dpapi }} keys={{ status.vault.key_count }}</div>
+    </div>
+  </div>
+</section>
+
+{% if last_scan %}
+<section>
+  <h2>上次扫描 · {{ last_scan.started_at }}
+    <span class="muted" style="font-weight:400">{{ last_scan.model }} · {{ last_scan.summary }}</span>
+  </h2>
+  <div class="body">
+    {% if last_scan.blocked_reason %}
+      <div class="warnbox">扫描被阻断：{{ last_scan.blocked_reason }}</div>
+    {% endif %}
+    <div class="scroll">
+      <table>
+        <thead><tr><th>标的</th><th>阶段</th><th>说明</th></tr></thead>
+        <tbody>
+        {% for o in last_scan.outcomes %}
+          <tr>
+            <td class="mono">{{ o.symbol }}</td>
+            <td><span class="tag {{ 'buy' if o.stage=='ordered' else '' }}">{{ o.stage }}</span></td>
+            <td class="muted" style="white-space:normal">{{ o.detail }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<section>
+  <h2>审计日志（最近 40 条）</h2>
+  <div class="body">
+    <pre>{% for a in audit %}#{{ a.seq }} {{ a.ts }} [{{ a.event }}] {{ a.actor }} {{ a.subject }}
+   {{ a.detail }}
+   hash={{ a.hash[:16] }}… prev={{ a.prev_hash[:16] }}…
+{% endfor %}</pre>
+  </div>
+</section>
+
+<div class="foot">
+  本界面不提供绕过风控的下单入口 · 数据仅供审计，不构成投资建议
+</div>
+</main>
+
+<div id="toast"></div>
+<script>
+async function act(kind){
+  const toast=document.getElementById('toast');
+  const show=(m)=>{toast.textContent=m;toast.classList.add('show');
+    setTimeout(()=>toast.classList.remove('show'),4200);};
+  try{
+    let url='/api/'+kind, fd=new FormData();
+    if(kind==='scan'){fd.append('symbols',document.getElementById('scanSymbols').value||'');}
+    if(kind==='kill'){fd.append('reason','手动紧急停止（Web）');}
+    if(kind==='reset'){
+      if(!confirm('将清空本地模拟盘持仓与委托，确定？')) return;
+      fd.append('confirm','RESET');
+    }
+    if(kind==='resume'){
+      const phrase = prompt('解除急停需人工确认。请输入确认短语：RESUME-TRADING');
+      if(phrase === null) return;
+      fd.append('confirm', phrase);
+    }
+    const r=await fetch(url,{method:'POST',body:fd});
+    const j=await r.json();
+    show('完成：'+JSON.stringify(j).slice(0,400));
+    if(kind==='scan'||kind==='reset'){setTimeout(()=>location.reload(),900);}
+    else if(kind==='kill'||kind==='resume'){setTimeout(()=>location.reload(),700);}
+  }catch(e){show('请求失败：'+e);}
+}
+async function cancelOrder(id){
+  const reason = prompt('撤单原因（留空使用默认）：','Web 手动撤单');
+  if(reason === null) return;
+  const fd = new FormData(); fd.append('reason', reason || 'Web 手动撤单');
+  try{
+    const r = await fetch('/api/orders/'+encodeURIComponent(id)+'/cancel',{method:'POST',body:fd});
+    const j = await r.json();
+    const toast=document.getElementById('toast');
+    toast.textContent = (r.ok? '撤单成功：' : '撤单失败：') + JSON.stringify(j).slice(0,300);
+    toast.classList.add('show');
+    setTimeout(()=>{toast.classList.remove('show'); if(r.ok) location.reload();}, 1800);
+  }catch(e){ alert('撤单请求失败：'+e); }
+}
+</script>
+</body>
+</html>
