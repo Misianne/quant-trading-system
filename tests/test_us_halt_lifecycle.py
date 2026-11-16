@@ -78,11 +78,12 @@ def test_luld_pause_expires_after_5_minutes():
     assert st.expected_resume_at == t + timedelta(seconds=20, minutes=5)
     # 4 分钟后仍暂停
     assert svc.status("AAPL", now=t + timedelta(minutes=4)).state is MarketState.LULD_PAUSED
-    # 5 分钟后暂停解除（此后若行情不新鲜，状态会是 DATA_STALE —— 这是安全行为）
+    # 5 分钟只是"最短暂停"：到期不等于恢复，必须等竞价 + 官方恢复
     late = svc.status("AAPL", now=t + timedelta(minutes=6))
-    assert late.state is not MarketState.LULD_PAUSED
-    assert any(e.state is MarketState.OPEN and e.kind is HaltKind.LULD
-               for e in late.events)
+    assert late.state is MarketState.LULD_PAUSED, "5 分钟到期不得自动恢复交易"
+    assert ("竞价" in late.note) or ("恢复" in late.note)
+    ok, why, _ = svc.fill_allowed("AAPL", now=t + timedelta(minutes=6))
+    assert ok is False, why
 
 
 def test_mwcb_pause_is_15_minutes():

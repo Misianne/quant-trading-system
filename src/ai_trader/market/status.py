@@ -412,6 +412,8 @@ class MarketStatusService:
         self._bands: Dict[str, LULDBand] = {}
         self._breaches: Dict[str, int] = {}
         self._version = 0
+        #: US-LULD 完整生命周期（可选接线；接上后 5 分钟到期 ≠ 恢复）
+        self.lifecycles: Dict[str, Any] = {}
         self._mwcb = MWCBState()
         self._index_ref: float = 0.0
         self._index_last: float = 0.0
@@ -744,6 +746,24 @@ class MarketStatusService:
     # ------------------------------------------------------------------ #
     # 查询与三阶段裁决
     # ------------------------------------------------------------------ #
+    def ensure_lifecycle(self, symbol: str, *, exchange: Any = None,
+                         tier: Optional[int] = None):
+        """为标的创建/取回 LULD 生命周期对象（接线用）。"""
+        from .luld import Exchange as _Ex, LuldLifecycle
+
+        sym = symbol.upper()
+        lc = self.lifecycles.get(sym)
+        if lc is None:
+            ex = exchange if isinstance(exchange, _Ex) else _Ex.UNKNOWN
+            lc = LuldLifecycle(sym, exchange=ex,
+                               tier=tier if tier is not None else self._tier(sym))
+            self.lifecycles[sym] = lc
+        return lc
+
+    def lifecycle_phase(self, symbol: str) -> Optional[str]:
+        lc = self.lifecycles.get(symbol.upper())
+        return lc.phase.value if lc is not None else None
+
     def status(self, symbol: str, now: Optional[datetime] = None) -> SymbolStatus:
         now = now or datetime.now(timezone.utc)
         sym = symbol.upper()
@@ -772,11 +792,23 @@ class MarketStatusService:
                            f"但未收到恢复通知 —— 保持停牌")
             return st
 
-        # 4) LULD 暂停：到期可恢复
+        # 4) LULD 暂停：**5 分钟到期不等于恢复**
+        #    到期后必须进入重新开盘竞价；无竞价/官方恢复数据时保持不可交易。
         if st.state == MarketState.LULD_PAUSED and st.expected_resume_at \
                 and now >= st.expected_resume_at:
-            self._emit(st, HaltKind.LULD, MarketState.OPEN, now,
-                       note="LULD 暂停 5 分钟到期，恢复交易（重新开盘）")
+            lc = self.lifecycles.get(sym)
+            if lc is not None:
+                try:
+                    lc.start_auction(now, source="gateway")
+                except Exception as exc:      # 竞价启动失败 → 保持不可交易
+                    st.note = f"最短暂停已满，但竞价无法启动：{exc}"
+                    return st
+                if st.state == MarketState.LULD_PAUSED:
+                    st.note = "最短暂停已满，进入重新开盘竞价（不可连续交易）"
+                return st
+            # 未接线生命周期 → 保守：也不自动恢复
+            st.note = "5 分钟最短暂停已满；无竞价/官方恢复数据，保持不可交易"
+            return st
 
         # 5) 行情陈旧
         if st.state in (MarketState.OPEN, MarketState.UNKNOWN):
@@ -828,6 +860,11 @@ class MarketStatusService:
         """**阶段 C：成交**。Paper 用它决定能不能真的产生成交。"""
         st = self.status(symbol, now)
         if st.state == MarketState.OPEN:
+            lc = self.lifecycles.get(symbol.upper())
+            if lc is not None and not lc.tradable:
+                # 生命周期仍在竞价/待恢复：不允许连续成交
+                return (False, f"{symbol} LULD 生命周期={lc.phase.value}，"
+                               f"不允许连续交易成交", st.state)
             return True, "", st.state
         return False, f"{symbol} 处于 {st.state.value}，不允许成交（{st.note or '—'}）", st.state
 
