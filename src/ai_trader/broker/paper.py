@@ -179,6 +179,7 @@ class PaperBroker(Broker):
         slippage_bps: float = 5.0,
         quote_source: Optional[QuoteSource] = None,
         allow_partial_fill: bool = True,
+        allow_short: bool = False,
     ):
         self.state_path = Path(state_path)
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
@@ -187,6 +188,8 @@ class PaperBroker(Broker):
         self.min_commission = float(min_commission)
         self.slippage_bps = float(slippage_bps)
         self.allow_partial_fill = allow_partial_fill
+        #: US-P2-D：模拟盘是否允许卖空。默认 False，保持"禁止裸卖空"的安全语义。
+        self.allow_short = bool(allow_short)
         self.quote_source = quote_source or SyntheticQuoteSource()
         self._lock = threading.RLock()
         self._state = self._load()
@@ -333,12 +336,48 @@ class PaperBroker(Broker):
             ref_price = float(req.price) if req.price is not None else quote.last
             order_id = "P" + uuid.uuid4().hex[:14]
 
-            otype = (req.order_type or "limit").lower()
-            if otype == "market":
+            # ---- US-P2-B：订单类型 / TIF（统一枚举，禁止静默降级）----
+            from .orders import OrderType, TimeInForce, apply_tif, parse_order_type, parse_tif
+            otype_enum = parse_order_type(req.order_type)
+            tif_enum = parse_tif(req.tif)
+            otype = otype_enum.value
+
+            exec_price: Optional[float] = None
+            fill_qty = 0.0
+            status = "submitted"
+            triggered = True
+
+            if otype_enum in (OrderType.STOP, OrderType.STOP_LIMIT):
+                trigger = getattr(req, "stop_price", None)
+                if trigger is None:
+                    trigger = req.stop_loss
+                if trigger is None or float(trigger) <= 0:
+                    raise OrderRejected(f"{otype} 必须提供触发价 stop_price",
+                                        code="STOP_PRICE_REQUIRED")
+                triggered = (quote.last >= float(trigger)) if req.side == "buy" \
+                    else (quote.last <= float(trigger))
+
+            if not triggered:
+                # 未触发 → 挂单，不成交（不是"静默当市价单"）
+                status = "submitted"
+            elif otype_enum is OrderType.STOP_LIMIT:
+                if req.price is None:
+                    raise OrderRejected("stop_limit 必须提供 price",
+                                        code="LIMIT_PRICE_REQUIRED")
+                limit = float(req.price)
+                crossed = (quote.last <= limit) if req.side == "buy" else (quote.last >= limit)
+                if crossed:
+                    raw = min(limit, quote.last) if req.side == "buy" else max(limit, quote.last)
+                    exec_price = self._slip(raw, req.side)
+                    fill_qty, status = qty, "filled"
+            elif otype_enum is OrderType.STOP:
+                # 触发后按市价成交
                 exec_price = self._slip(quote.last, req.side)
-                fill_qty = qty
-                status = "filled"
-            else:
+                fill_qty, status = qty, "filled"
+            elif otype_enum is OrderType.MARKET:
+                exec_price = self._slip(quote.last, req.side)
+                fill_qty, status = qty, "filled"
+            else:  # LIMIT
                 if req.price is None:
                     raise OrderRejected("限价单必须提供 price")
                 crossed = (quote.last <= ref_price) if req.side == "buy" else (quote.last >= ref_price)
@@ -347,10 +386,17 @@ class PaperBroker(Broker):
                     exec_price = self._slip(raw, req.side)
                     fill_qty = qty
                     status = "filled"
-                else:
-                    exec_price = None
-                    fill_qty = 0.0
-                    status = "submitted"
+
+            # TIF 语义：IOC 立即撤销剩余；FOK 不能全成则整单拒绝；DAY/GTC 剩余挂单
+            tif_out = apply_tif(tif_enum, qty, fill_qty)
+            if tif_out.reject_all:
+                raise OrderRejected(tif_out.note or "FOK 无法全部成交",
+                                    code="FOK_UNFILLABLE")
+            if tif_out.cancel_remainder and tif_out.fill_qty < qty:
+                # IOC/OPG/CLS：部分成交 + 剩余撤销；完全未成交则整单取消
+                if tif_out.fill_qty <= 0:
+                    status = "cancelled"
+                fill_qty = tif_out.fill_qty
 
             notional = (exec_price or 0.0) * fill_qty
             commission = self._commission(notional) if fill_qty else 0.0
@@ -366,10 +412,13 @@ class PaperBroker(Broker):
                     )
             else:
                 held = float(self._state["positions"].get(sym, {}).get("qty", 0))
-                if held < qty:
+                if held < qty and not getattr(self, "allow_short", False):
                     raise OrderRejected(
                         f"持仓不足：{sym} 持有 {held}，卖出 {qty}", code="INSUFFICIENT_POSITION"
                     )
+                if held < qty and getattr(self, "allow_short", False):
+                    # US-P2-D：模拟盘卖空。真实盘由 ShortGuard + 人工批准另行把关。
+                    self._record_short_borrow(sym, qty - held, currency)
 
             if status == "filled":
                 self._apply_fill(sym, market, currency, req.side, fill_qty, exec_price, commission)
@@ -401,26 +450,62 @@ class PaperBroker(Broker):
             self._save()
             return self._to_result(order)
 
+    def _record_short_borrow(self, sym: str, qty: float, currency: str) -> None:
+        """在模拟盘登记一笔借券占用（供后续回补/风控查看）。"""
+        book = self._state.setdefault("short_borrow", {})
+        item = book.setdefault(sym, {"qty": 0.0, "currency": currency})
+        item["qty"] = round(float(item.get("qty", 0.0)) + float(qty), 6)
+
     def _apply_fill(self, sym: str, market: str, currency: str, side: str,
                     qty: float, price: float, commission: float) -> None:
         cash = float(self._state["cash"].get(currency, 0.0))
         pos = self._state["positions"].setdefault(
             sym, {"qty": 0.0, "avg_cost": 0.0, "market": market, "currency": currency, "name": ""}
         )
+        held = float(pos["qty"])
         if side == "buy":
-            new_qty = float(pos["qty"]) + qty
-            prev_cost = float(pos["avg_cost"]) * float(pos["qty"])
-            pos["avg_cost"] = round((prev_cost + price * qty + commission) / new_qty, 6)
-            pos["qty"] = new_qty
+            if held < 0:
+                # 买回平空：已实现盈亏按开仓均价与买回价之差计算
+                cover_qty = min(qty, -held)
+                realized = (float(pos["avg_cost"]) - price) * cover_qty - commission
+                rp = self._state.setdefault("realized_pnl", {})
+                rp[currency] = round(float(rp.get(currency, 0.0)) + realized, 4)
+                remaining = qty - cover_qty
+                pos["qty"] = round(held + cover_qty, 6)
+                if abs(pos["qty"]) < 1e-9:
+                    pos["qty"] = 0.0
+                    pos["avg_cost"] = 0.0
+                if remaining > 0:
+                    pos["avg_cost"] = price
+                    pos["qty"] = round(pos["qty"] + remaining, 6)
+            else:
+                new_qty = held + qty
+                prev_cost = float(pos["avg_cost"]) * held
+                pos["avg_cost"] = round((prev_cost + price * qty + commission) / new_qty, 6)
+                pos["qty"] = new_qty
             cash -= price * qty + commission
         else:
-            realized = (price - float(pos["avg_cost"])) * qty - commission
-            rp = self._state.setdefault("realized_pnl", {})
-            rp[currency] = round(float(rp.get(currency, 0.0)) + realized, 4)
-            pos["qty"] = float(pos["qty"]) - qty
-            if abs(pos["qty"]) < 1e-9:
-                pos["qty"] = 0.0
-                pos["avg_cost"] = 0.0
+            if held > 0:
+                close_qty = min(qty, held)
+                realized = (price - float(pos["avg_cost"])) * close_qty - commission
+                rp = self._state.setdefault("realized_pnl", {})
+                rp[currency] = round(float(rp.get(currency, 0.0)) + realized, 4)
+                short_qty = qty - close_qty
+                pos["qty"] = round(held - close_qty, 6)
+                if short_qty > 0:
+                    # 反手做空：以本次卖出价作为空头开仓均价
+                    pos["avg_cost"] = price
+                    pos["qty"] = round(pos["qty"] - short_qty, 6)
+                elif abs(pos["qty"]) < 1e-9:
+                    pos["qty"] = 0.0
+                    pos["avg_cost"] = 0.0
+            else:
+                # 已有空头：加空，按加权均价
+                total = -held + qty
+                pos["avg_cost"] = round((float(pos["avg_cost"]) * (-held) + price * qty) / total, 6)
+                pos["qty"] = round(held - qty, 6)
+                rp = self._state.setdefault("realized_pnl", {})
+                rp[currency] = round(float(rp.get(currency, 0.0)) - commission, 4)
             cash += price * qty - commission
         self._state["cash"][currency] = round(cash, 4)
 

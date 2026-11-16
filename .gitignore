@@ -50,3 +50,6 @@ data/*.json
 
 # ---- 审计探针输出（日志/JSON，属运行产物）----
 audit_evidence/
+
+# ---- 测试产物 ----
+p2_results.xml

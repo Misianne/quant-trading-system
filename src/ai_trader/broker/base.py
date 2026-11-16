@@ -155,9 +155,11 @@ class OrderRequest:
     side: str                     # buy | sell
     qty: float
     price: Optional[float] = None
-    order_type: str = "limit"     # limit | market
+    order_type: str = "limit"     # limit | market | stop | stop_limit
     currency: str = ""
-    tif: str = "day"
+    tif: str = "day"              # day | gtc | ioc | fok | opg | cls
+    #: 止损/止盈触发价。``stop`` / ``stop_limit`` 单必填（P2-B）。
+    stop_price: Optional[float] = None
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
     signal_id: str = ""

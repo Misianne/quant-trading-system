@@ -112,6 +112,10 @@ class OrderIntent:
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
     order_type: str = "limit"
+    #: 有效期（US-P2-B）。默认 DAY，与旧行为一致。
+    tif: str = "day"
+    #: stop / stop_limit 的触发价
+    stop_price: Optional[float] = None
     signal_id: str = ""
     confidence: float = 0.0
     reason: str = ""
@@ -238,7 +242,11 @@ class RiskController:
     """独立风控。策略引擎每次下单前必须调用 :meth:`evaluate`。"""
 
     def __init__(self, cfg: AppConfig, gate: Optional[SafetyGate] = None,
-                 rules: Optional[MarketRuleSet] = None):
+                 rules: Optional[MarketRuleSet] = None, *,
+                 market_status: Any = None,
+                 short_guard: Any = None,
+                 settlement: Any = None,
+                 caps: Any = None):
         self.cfg = cfg
         self.gate = gate or cfg.gate
         # B4：交易规则（板块/T+1/涨跌停/最小单位/停牌/日历）
@@ -261,6 +269,17 @@ class RiskController:
         self.enforce_market_hours = bool(r.get("enforce_market_hours", True))
         self.allow_short = bool(r.get("allow_short", False))
         self.allow_margin = bool(r.get("allow_margin", False))
+
+        # ---- US-P2/P3 接入（显式组件注入；未开启时行为与旧版完全一致）----
+        # 设计：只有 ``us_phase2.enabled=true`` 才跑新增检查。
+        # 一旦开启，缺少任一组件就 fail-closed —— 不允许"半接入"假装通过。
+        p2 = (cfg.raw.get("us_phase2") or {})
+        self.phase2_enabled = bool(p2.get("enabled", False))
+        self.phase2_checks = dict(p2.get("checks") or {})
+        self.market_status = market_status
+        self.short_guard = short_guard
+        self.settlement = settlement
+        self.caps = caps
         self.markets = (cfg.raw.get("markets") or {})
         self.universe_codes = {u["code"].lower() for u in cfg.universe}
         # 运行期状态
@@ -536,6 +555,135 @@ class RiskController:
                 # 未纳入强制校验的市场：显式记录"未建模"，不伪装成"已校验"
                 checks.append(CheckResult("market_rules", True,
                                           f"未强制校验：{rule_check.note}"))
+
+        # ---------- 3c. 市场状态（US-P2-C：停牌 / LULD / MWCB） ----------
+        # 关键：风险退出（is_exit）**不因市场状态被阻断**，只告警 ——
+        # 这是 US-P0「风险处置不被普通限制阻断」的延续。
+        if self.phase2_enabled and self.phase2_checks.get("market_status", True):
+            if self.market_status is None:
+                self._check(checks, "market_status", False,
+                            "US-P2 已启用但未注入 MarketStatusService（fail-closed）")
+                reasons.append("市场状态组件未接入，拒绝下单")
+            else:
+                try:
+                    md = self.market_status.evaluate(sym, is_exit=bool(intent.is_exit), now=now)
+                except Exception as exc:
+                    self._check(checks, "market_status", False,
+                                f"市场状态查询异常：{type(exc).__name__}: {exc}")
+                    reasons.append("市场状态无法确认，拒绝下单")
+                else:
+                    if md.allowed:
+                        detail = f"市场状态 {md.state.value}"
+                        if md.warning:
+                            warnings.append(md.warning)
+                            detail += f"（{md.warning}）"
+                        self._check(checks, "market_status", True, detail)
+                    else:
+                        self._check(checks, "market_status", False, md.reason)
+                        reasons.append(md.reason)
+
+        # ---------- 3d. 订单类型 / TIF / 券商能力（US-P2-B） ----------
+        # 不支持的类型必须拒绝，绝不降级成 market。
+        if self.phase2_enabled and self.phase2_checks.get("order_policy", True):
+            from ..broker.orders import OrderValidationError, validate_order
+            from ..broker.base import OrderRequest as _OrderRequest
+            req = _OrderRequest(
+                symbol=sym, market=market, side=side, qty=qty, price=price or None,
+                order_type=(getattr(intent, "order_type", None) or "limit"),
+                tif=(getattr(intent, "tif", None) or "day"),
+                stop_price=getattr(intent, "stop_price", None),
+            )
+            caps = self.caps
+            try:
+                if caps is None:
+                    raise OrderValidationError(
+                        "US-P2 已启用但未注入 BrokerCapabilities（fail-closed）",
+                        code="CAPS_MISSING")
+                validate_order(
+                    req, caps,
+                    in_auction_window=bool(self.phase2_checks.get("auction_window", False)),
+                    allow_short=bool(self.allow_short),
+                )
+            except OrderValidationError as exc:
+                self._check(checks, "order_policy", False, str(exc))
+                reasons.append(f"订单不合规：{exc}")
+            except Exception as exc:
+                self._check(checks, "order_policy", False,
+                            f"订单校验异常：{type(exc).__name__}: {exc}")
+                reasons.append("订单校验异常，拒绝下单")
+            else:
+                self._check(checks, "order_policy", True,
+                            f"{req.order_type}/{req.tif} 通过能力校验")
+
+        # ---------- 3e. 卖空与借券（US-P2-D） ----------
+        # 默认 ShortMode.DISABLED ⇒ 保留"禁止裸卖空"的安全语义。
+        if self.phase2_enabled and self.phase2_checks.get("short", True):
+            if self.short_guard is None:
+                if side == "sell":
+                    held = float(pos.qty if pos else 0.0)
+                    if qty > held + 1e-9:
+                        self._check(checks, "short_sale", False,
+                                    "US-P2 已启用但未注入 ShortGuard，卖出超过持仓被拒")
+                        reasons.append("卖空组件未接入，禁止超额卖出")
+                    else:
+                        self._check(checks, "short_sale", True, "普通卖出（无需卖空判定）")
+                else:
+                    self._check(checks, "short_sale", True, "买入不涉及卖空")
+            else:
+                try:
+                    from ..broker.base import OrderRequest as _ShortReq
+                    sd = self.short_guard.check(
+                        _ShortReq(symbol=sym, market=market, side=side, qty=qty,
+                                  price=price or None),
+                        held_qty=float(pos.qty if pos else 0.0),
+                        caps=self.caps, price=price or None, prior_close=prev_close,
+                        is_live=not bool(getattr(self.gate.state, "paper_trading", False)),
+                        now=now)
+                except Exception as exc:
+                    self._check(checks, "short_sale", False,
+                                f"卖空判定异常：{type(exc).__name__}: {exc}")
+                    reasons.append("卖空判定异常，拒绝下单")
+                else:
+                    if sd.allowed:
+                        detail = sd.reason or "普通卖出"
+                        if sd.warning:
+                            warnings.append(sd.warning)
+                        self._check(checks, "short_sale", True, detail)
+                    else:
+                        self._check(checks, "short_sale", False, sd.reason)
+                        reasons.append(sd.reason)
+
+        # ---------- 3f. T+1 结算资金（US-P2-E） ----------
+        # 只对新开仓/加仓做资金校验；减仓卖出不需要购买力。
+        if self.phase2_enabled and self.phase2_checks.get("settlement", True):
+            if side == "buy" and not intent.is_exit:
+                if self.settlement is None:
+                    self._check(checks, "settlement", False,
+                                "US-P2 已启用但未注入 SettlementLedger（fail-closed）")
+                    reasons.append("结算账本未接入，禁止买入")
+                else:
+                    need = float(qty) * float(price or 0.0)
+                    broker_bp = getattr(portfolio, "buying_power", None)
+                    try:
+                        self.settlement.settle_through(now.date())
+                        avail, how = self.settlement.effective_available(broker_bp)
+                    except Exception as exc:
+                        self._check(checks, "settlement", False,
+                                    f"结算账本异常：{type(exc).__name__}: {exc}")
+                        reasons.append("结算账本异常，禁止买入")
+                    else:
+                        if need <= 0:
+                            self._check(checks, "settlement", True, "无名义金额，跳过资金校验")
+                        elif avail + 1e-9 >= need:
+                            self._check(checks, "settlement", True,
+                                        f"可用 {avail:.2f} >= 需要 {need:.2f}（{how}）")
+                        else:
+                            self._check(checks, "settlement", False,
+                                        f"购买力不足：需要 {need:.2f}，可用 {avail:.2f}（{how}）")
+                            reasons.append(
+                                f"结算资金不足：需要 {need:.2f}，可用 {avail:.2f}")
+            else:
+                self._check(checks, "settlement", True, "卖出/减仓不校验购买力")
 
         # ---------- 4. 标的白名单 ----------
         in_universe = sym.lower() in self.universe_codes

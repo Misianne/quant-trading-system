@@ -645,3 +645,42 @@ market_feed:
   reconnect_max_seconds: 5
   max_reconnect_attempts: 0     # 0 = 无限重连
   settle_updates: 1             # 重连后需收到几条新行情才认为数据可信
+
+# =============================================================================
+# US-P2 / P3 能力开关（2026-11-16）
+# -----------------------------------------------------------------------------
+# 设计：默认 enabled: false —— 保证既有 P0/P1 行为与全部回归测试不受影响。
+# 开启后**必须**由调用方注入对应组件（MarketStatusService / ShortGuard /
+# SettlementLedger / BrokerCapabilities），缺任何一个都会 fail-closed（拒绝下单），
+# 不允许"半接入"冒充已生效。
+# =============================================================================
+us_phase2:
+
+  enabled: false
+
+  # 分项开关（enabled=true 时逐项生效）
+  checks:
+    market_status: true      # 停牌 / LULD / MWCB（P2-C）
+    order_policy: true       # 订单类型 / TIF / 券商能力（P2-B）
+    short: true              # 卖空 / 借券 / SSR（P2-D）
+    settlement: true         # T+1 结算资金（P2-E）
+
+  market_status:
+    luld_enabled: true
+    max_quote_age_seconds: 60
+    # 参考价来源由调用方注入（通常为前收或近 5 分钟成交均价），本系统不猜
+
+  short:
+    # disabled = 禁止一切卖空（默认，保持"禁止裸卖空"安全语义）
+    # paper_only = 仅模拟盘允许；enabled = 允许（真实盘还须人工批准）
+    mode: disabled
+    require_operator_approval_live: true
+    locate_ttl_minutes: 15
+
+  settlement:
+    # cash = 现金账户（未结算卖出款不计入购买力）
+    # margin = 保证金账户（未结算可计入，倍数见 margin_multiplier）
+    mode: cash
+    settle_lag_days: 1
+    margin_multiplier: 2.0
+    tolerance: 0.01          # 与券商购买力对账差异阈值（比例）
