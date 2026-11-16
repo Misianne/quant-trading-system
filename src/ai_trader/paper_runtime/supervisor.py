@@ -51,49 +51,90 @@ def wallnow() -> datetime:
 # ---------------------------------------------------------------------- #
 # 资源指标（零依赖）
 # ---------------------------------------------------------------------- #
+# ---------------------------------------------------------------------- #
+# Windows 进程指标：**模块级初始化一次**
+# ---------------------------------------------------------------------- #
+# 为什么不能写在函数里：``ctypes.Structure`` 每次定义都会创建一个新的类型对象，
+# ctypes 会为它保留原生类型元数据且**不会**被 GC 回收；``WinDLL`` 每次加载也会
+# 产生新的库句柄。心跳每 tick 调一次 → 18,535 次调用后 RSS 涨 275 MB。
+# 这是真实泄漏（不是分配器保留），必须把类型/句柄/函数指针都缓存到模块级。
+if sys.platform == "win32":  # pragma: no cover - 平台相关
+    import ctypes
+    from ctypes import wintypes
+
+    class _PROCESS_MEMORY_COUNTERS(ctypes.Structure):
+        _fields_ = [("cb", wintypes.DWORD),
+                    ("PageFaultCount", wintypes.DWORD),
+                    ("PeakWorkingSetSize", ctypes.c_size_t),
+                    ("WorkingSetSize", ctypes.c_size_t),
+                    ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                    ("PagefileUsage", ctypes.c_size_t),
+                    ("PeakPagefileUsage", ctypes.c_size_t)]
+
+    _K32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    _K32.GetCurrentProcess.restype = wintypes.HANDLE
+    _K32.GetCurrentProcess.argtypes = []
+    _K32.K32GetProcessMemoryInfo.restype = wintypes.BOOL
+    _K32.K32GetProcessMemoryInfo.argtypes = [
+        wintypes.HANDLE, ctypes.POINTER(_PROCESS_MEMORY_COUNTERS), wintypes.DWORD]
+    _K32.GetProcessHandleCount.restype = wintypes.BOOL
+    _K32.GetProcessHandleCount.argtypes = [wintypes.HANDLE,
+                                           ctypes.POINTER(wintypes.DWORD)]
+    _K32.OpenProcess.restype = wintypes.HANDLE
+    _K32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    _K32.CloseHandle.restype = wintypes.BOOL
+    _K32.CloseHandle.argtypes = [wintypes.HANDLE]
+    _K32.GetExitCodeProcess.restype = wintypes.BOOL
+    _K32.GetExitCodeProcess.argtypes = [wintypes.HANDLE,
+                                        ctypes.POINTER(wintypes.DWORD)]
+
+
 def process_rss_mb() -> float:
-    """当前进程常驻内存（MB）。Windows 用 K32GetProcessMemoryInfo，其它平台用 resource。
-
-    必须显式声明 ``restype/argtypes``：不声明时 ctypes 会把 64 位 HANDLE 截断，
-    调用返回 0（看起来"读不到内存"，实际是签名问题）。
-    """
-    if sys.platform == "win32":
+    """当前进程常驻内存（MB）。类型与句柄已在模块级初始化，调用零分配增长。"""
+    if sys.platform != "win32":
         try:
-            import ctypes
-            from ctypes import wintypes
-
-            class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
-                _fields_ = [("cb", wintypes.DWORD),
-                            ("PageFaultCount", wintypes.DWORD),
-                            ("PeakWorkingSetSize", ctypes.c_size_t),
-                            ("WorkingSetSize", ctypes.c_size_t),
-                            ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
-                            ("QuotaPagedPoolUsage", ctypes.c_size_t),
-                            ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
-                            ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
-                            ("PagefileUsage", ctypes.c_size_t),
-                            ("PeakPagefileUsage", ctypes.c_size_t)]
-
-            k32 = ctypes.WinDLL("kernel32", use_last_error=True)
-            k32.GetCurrentProcess.restype = wintypes.HANDLE
-            k32.GetCurrentProcess.argtypes = []
-            fn = k32.K32GetProcessMemoryInfo
-            fn.restype = wintypes.BOOL
-            fn.argtypes = [wintypes.HANDLE, ctypes.POINTER(PROCESS_MEMORY_COUNTERS),
-                           wintypes.DWORD]
-            counters = PROCESS_MEMORY_COUNTERS()
-            counters.cb = ctypes.sizeof(counters)
-            if fn(k32.GetCurrentProcess(), ctypes.byref(counters), counters.cb):
-                return round(counters.WorkingSetSize / (1024 * 1024), 2)
-        except Exception:  # noqa: BLE001 - 取不到不伪造
+            import resource
+            return round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.0, 2)
+        except Exception:  # noqa: BLE001
             return -1.0
+    try:
+        c = _PROCESS_MEMORY_COUNTERS()
+        c.cb = ctypes.sizeof(c)
+        if _K32.K32GetProcessMemoryInfo(_K32.GetCurrentProcess(),
+                                        ctypes.byref(c), c.cb):
+            return round(c.WorkingSetSize / (1024 * 1024), 2)
+    except Exception:  # noqa: BLE001 - 取不到不伪造
+        return -1.0
+    return -1.0
+
+
+def process_commit_mb() -> float:
+    """提交内存（MB）。用于区分"工作集缓存"与"真实占用"。"""
+    if sys.platform != "win32":
         return -1.0
     try:
-        import resource
-        rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-        return round(rss / 1024.0, 2)      # Linux 单位 KB
+        c = _PROCESS_MEMORY_COUNTERS()
+        c.cb = ctypes.sizeof(c)
+        if _K32.K32GetProcessMemoryInfo(_K32.GetCurrentProcess(),
+                                        ctypes.byref(c), c.cb):
+            return round(c.PagefileUsage / (1024 * 1024), 2)
     except Exception:  # noqa: BLE001
         return -1.0
+    return -1.0
+
+
+def process_handle_count() -> int:
+    if sys.platform != "win32":
+        return -1
+    try:
+        n = wintypes.DWORD(0)
+        _K32.GetProcessHandleCount(_K32.GetCurrentProcess(), ctypes.byref(n))
+        return int(n.value)
+    except Exception:  # noqa: BLE001
+        return -1
 
 
 class CpuMeter:
@@ -201,14 +242,19 @@ def pid_alive(pid: int) -> bool:
         return False
     if sys.platform == "win32":
         try:
-            import ctypes
             PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-            handle = ctypes.windll.kernel32.OpenProcess(
-                PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
-            if handle:
-                ctypes.windll.kernel32.CloseHandle(handle)
-                return True
-            return False
+            STILL_ACTIVE = 259
+            handle = _K32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
+            if not handle:
+                return False
+            try:
+                # 关键：进程退出后 OpenProcess 仍可能成功（进程对象尚未回收），
+                # 必须再看退出码是否仍是 STILL_ACTIVE，否则会把死进程判成活着。
+                code = wintypes.DWORD(0)
+                _K32.GetExitCodeProcess(handle, ctypes.byref(code))
+                return int(code.value) == STILL_ACTIVE
+            finally:
+                _K32.CloseHandle(handle)
         except Exception:  # noqa: BLE001
             return False
     try:
@@ -328,6 +374,7 @@ class Supervisor:
             "aggregate": h.get("aggregate"),
             "can_open_new": h.get("can_open_new"),
             "rss_mb": process_rss_mb(),
+            "commit_mb": process_commit_mb(),
             "cpu_pct": self.cpu.last_pct,
         }
         if self._progress_fn is not None:

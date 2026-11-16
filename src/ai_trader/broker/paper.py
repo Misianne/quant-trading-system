@@ -228,8 +228,19 @@ class PaperBroker(Broker):
                 base = self._default_state()
                 base.update(data)
                 return base
-            except (ValueError, OSError):
-                pass
+            except (ValueError, OSError) as exc:
+                # **绝不**在状态文件损坏时回落到默认账户 —— 那等于把余额清零。
+                # fail-closed：拒绝启动，保留现场供人工核对/从备份恢复。
+                bad = self.state_path.with_name(
+                    self.state_path.name + ".corrupt")
+                try:
+                    if not bad.exists():
+                        self.state_path.replace(bad)
+                except OSError:
+                    pass
+                raise RuntimeError(
+                    f"账户状态文件损坏，拒绝启动（已隔离为 {bad.name}）："
+                    f"{type(exc).__name__}: {exc}") from exc
         st = self._default_state()
         self.state_path.write_text(json.dumps(st, indent=2, ensure_ascii=False), encoding="utf-8")
         return st

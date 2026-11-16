@@ -115,12 +115,16 @@ class StrategyEngine:
                  stops_path: Optional[Path] = None,
                  allow_rule_engine_entry: bool = False,
                  feed=None,
-                 phase2_override: Optional[Dict[str, Any]] = None):
+                 phase2_override: Optional[Dict[str, Any]] = None,
+                 clocks: Optional[Dict[str, Any]] = None):
         self.cfg = cfg
         self.broker = broker
         # ---- US-P2-A 收口：所有行情读取统一走网关（结构上消除旁路）----
         # 时钟复用风控的 rules.clocks，保证"时段判定"和"交易规则"用的是同一套时区/日历。
-        _clocks = getattr(getattr(risk, "rules", None), "clocks", {}) or {}
+        # 允许运行时注入自己的交易所时钟（PaperRuntime 用回放时钟）；
+        # 未注入时沿用风控规则里的配置时钟（既有行为不变）。
+        _clocks = (clocks if clocks
+                   else (getattr(getattr(risk, "rules", None), "clocks", {}) or {}))
         # ``phase2_override``：仅供 PaperRuntime 在**本实例作用域**内启用 P2 检查，
         # 不改全局 ``us_phase2.enabled``（那是全站开关，本轮必须保持 false）。
         _p2 = (phase2_override if phase2_override is not None

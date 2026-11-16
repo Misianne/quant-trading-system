@@ -166,11 +166,37 @@ INTENT_UNRESOLVED_STATES = (
 _ORDER_COLUMN_MIGRATIONS = (
     ("client_id", "TEXT"),
     ("reconcile_note", "TEXT"),
+    #: 归一化后的时间戳（epoch 秒）。
+    #: 为什么需要：``ts`` 列里可能混有不同时区偏移（-05:00 / +08:00 / +00:00），
+    #: 用字符串比较 ``ts >= ?`` 会把"昨天 20:15-05:00"（= 今天 01:15Z）算成今天，
+    #: 导致 T+1 的"当日买入"统计错误、可卖数量被错误清零。
+    ("ts_epoch", "REAL"),
 )
 
 
 def utcnow_iso() -> str:
-    return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+    """统一时间基准（回放时跟随回放时钟，而不是系统真实时间）。"""
+    try:
+        from .. import timebase
+        return timebase.now().astimezone().isoformat(timespec="seconds")
+    except Exception:  # noqa: BLE001 - 极早期导入失败时退回系统时间
+        return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+
+
+def _epoch(iso: Any) -> float:
+    """把 ISO 时间串转成 epoch 秒；无法解析时返回 0（保守：不匹配任何查询）。"""
+    if isinstance(iso, (int, float)):
+        return float(iso)
+    text = str(iso or "").strip()
+    if not text:
+        return 0.0
+    try:
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return 0.0
+    if dt.tzinfo is None:
+        dt = dt.astimezone()
+    return dt.timestamp()
 
 
 def _canonical(obj: Any) -> str:
@@ -284,9 +310,18 @@ class AuditJournal:
     def _migrate_columns_on(conn) -> None:
         """增量补列，保留全部历史数据（不删表、不重建）。"""
         existing = {r["name"] for r in conn.execute("PRAGMA table_info(orders)")}
+        added = []
         for name, ddl in _ORDER_COLUMN_MIGRATIONS:
             if name not in existing:
                 conn.execute(f"ALTER TABLE orders ADD COLUMN {name} {ddl}")
+                added.append(name)
+        # ts_epoch 回填：老库里的行按 ts 解析一次（只做一次，之后新写入自带值）
+        if "ts_epoch" in added:
+            rows = conn.execute(
+                "SELECT order_id, ts FROM orders WHERE ts_epoch IS NULL").fetchall()
+            for r in rows:
+                conn.execute("UPDATE orders SET ts_epoch = ? WHERE order_id = ?",
+                             (_epoch(r["ts"]), r["order_id"]))
 
     # ------------------------------------------------------------------ #
     # 低层
@@ -392,15 +427,16 @@ class AuditJournal:
 
     def record_order(self, order: Dict[str, Any]) -> str:
         oid = order.get("order_id") or uuid.uuid4().hex[:16]
+        _ts = order.get("ts") or utcnow_iso()
         if True:
             self._retry_write(lambda c: c.execute(
                 "INSERT OR REPLACE INTO orders (order_id, ts, symbol, market, side, qty,"
                 " price, order_type, status, filled_qty, avg_fill_price, commission,"
                 " venue, broker_order_id, signal_id, decision_id, note, client_id,"
-                " reconcile_note)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " reconcile_note, ts_epoch)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
-                    oid, order.get("ts") or utcnow_iso(), order.get("symbol"),
+                    oid, _ts, order.get("symbol"),
                     order.get("market"), order.get("side"), order.get("qty"),
                     order.get("price"), order.get("order_type"), order.get("status"),
                     order.get("filled_qty", 0), order.get("avg_fill_price"),
@@ -408,6 +444,7 @@ class AuditJournal:
                     order.get("broker_order_id"), order.get("signal_id"),
                     order.get("decision_id"), order.get("note"),
                     order.get("client_id"), order.get("reconcile_note"),
+                    _epoch(_ts),
                 ),
             ))
         self.log("order", order, subject=order.get("symbol", ""))
@@ -755,9 +792,16 @@ class AuditJournal:
             }
 
     def orders_since(self, iso_ts: str) -> List[Dict[str, Any]]:
+        """返回 ``ts >= iso_ts`` 的订单。
+
+        **按归一化 epoch 比较**，不做字符串比较 —— 混用时区偏移时字符串比较
+        会把不同日期的订单算进"今天"（T+1 可卖数量因此被错误清零）。
+        """
+        since = _epoch(iso_ts)
         with self._lock:
             return [dict(r) for r in self._conn.execute(
-                "SELECT * FROM orders WHERE ts >= ? ORDER BY id ASC", (iso_ts,)).fetchall()]
+                "SELECT * FROM orders WHERE ts_epoch IS NOT NULL AND ts_epoch >= ?"
+                " ORDER BY id ASC", (since,)).fetchall()]
 
     # ------------------------------------------------------------------ #
     # 审计链校验

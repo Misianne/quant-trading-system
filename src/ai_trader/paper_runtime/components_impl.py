@@ -474,6 +474,7 @@ class EngineComponent(Component):
             self.journal, stops_path=self.stops_path,
             allow_rule_engine_entry=False,
             phase2_override=self.phase2_override,
+            clocks=ctx.clocks,
         )
         ctx.engine = self.engine
         ctx.services["engine"] = self.engine

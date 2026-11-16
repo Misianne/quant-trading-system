@@ -61,7 +61,8 @@ if ($env:LIVE_TRADING -match "^(1|true|yes)$") {
 
 # 3) 组装参数（--paper 是强制项）
 $env:PYTHONPATH = (Join-Path $Root "src")
-$argList = @("-m", "ai_trader.paper_runtime", "--paper", "--out", $RunRoot)
+$argList = @("-m", "ai_trader.paper_runtime", "--paper", "--out", $RunRoot,
+             "--lock-root", $RunRoot, "--log-file", $LogFile)
 if ($Replay) {
     $argList += @("--replay", $Replay)
     if ($TickInterval -gt 0) { $argList += @("--tick-interval", $TickInterval) }
@@ -73,12 +74,47 @@ if ($Replay) {
 Write-Host "[start] $Py $($argList -join ' ')"
 Write-Host "[start] 日志：$LogFile"
 
-$p = Start-Process -FilePath $Py -ArgumentList $argList -WorkingDirectory $Root `
-    -RedirectStandardOutput $LogFile -RedirectStandardError "$LogFile.err" `
-    -PassThru -WindowStyle Hidden
-$p.Id | Out-File -FilePath $PidFile -Encoding ascii
+# -Replay 是**前台批处理**：直接调用并透传退出码（参数错误必须能被调用方看到）。
+if ($Replay) {
+    & $Py @argList
+    exit $LASTEXITCODE
+}
 
-Write-Host "[OK] 已启动 PID=$($p.Id)" -ForegroundColor Green
+# 不用 Start-Process：PowerShell 5.1 在同时存在 HTTPS_PROXY / https_proxy 时
+# 复制环境变量会抛 "字典中的关键字重复"（ArgumentException）。
+# 直接用 .NET ProcessStartInfo（UseShellExecute=false）启动，环境变量由子进程继承。
+$psi = New-Object System.Diagnostics.ProcessStartInfo
+$psi.FileName = $Py
+$psi.Arguments = ($argList -join ' ')
+$psi.WorkingDirectory = $Root
+$psi.UseShellExecute = $false
+$psi.CreateNoWindow = $true
+$proc = New-Object System.Diagnostics.Process
+$proc.StartInfo = $psi
+if (-not $proc.Start()) {
+    Write-Host "[FAIL] 进程启动失败" -ForegroundColor Red
+    exit 5
+}
+$proc.Id | Out-File -FilePath $PidFile -Encoding ascii
+
+# 4) 存活校验（仅 soak 模式）：分离启动无法同步拿到子进程退出码，
+#    所以启动后短暂观察；若立刻退出，说明参数/保护检查失败 —— 必须报错而不是假装成功。
+if (-not $Replay) {
+    Start-Sleep -Milliseconds 1800
+    $proc.Refresh()
+    if ($proc.HasExited) {
+        $tail = ""
+        if (Test-Path $LogFile) {
+            $tail = (Get-Content $LogFile -Tail 8 -ErrorAction SilentlyContinue) -join " | "
+        }
+        Write-Host "[FAIL] 进程启动后立即退出（exit=$($proc.ExitCode)）。日志：$tail" -ForegroundColor Red
+        Remove-Item $PidFile -Force -ErrorAction SilentlyContinue
+        exit 6
+    }
+}
+
+Write-Host "[OK] 已启动 PID=$($proc.Id)" -ForegroundColor Green
 Write-Host "     状态：.\scripts\paper_status.ps1"
 Write-Host "     停止：.\scripts\paper_stop.ps1"
 exit 0
+

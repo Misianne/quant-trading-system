@@ -191,7 +191,9 @@ def cmd_soak(cfg: Any, args: argparse.Namespace, root: Path) -> int:
     run_dir.mkdir(parents=True, exist_ok=True)
 
     sc = SCENARIOS[keys[0]]
-    rt, clk, src, model = build_runtime_for(sc, cfg=cfg, out_dir=run_dir)
+    rt, clk, src, model = build_runtime_for(
+        sc, cfg=cfg, out_dir=run_dir,
+        lock_root=Path(args.lock_root) if args.lock_root else root)
     start = rt.start()
     if not start.ok:
         print(json.dumps({"ok": False, "reason": start.reason}, ensure_ascii=False))
@@ -322,6 +324,156 @@ def cmd_soak(cfg: Any, args: argparse.Namespace, root: Path) -> int:
 
 
 # ---------------------------------------------------------------------- #
+def cmd_session(cfg: Any, args: argparse.Namespace, root: Path) -> int:
+    """复用单运行体的长时连续会话，按 5/15/30 分钟节奏采集监控数据。"""
+    import gc
+    import threading
+    import time as _time
+    from datetime import datetime as _dt
+
+    from ai_trader.paper_runtime.session import ReplaySession
+    from ai_trader.paper_runtime.supervisor import (
+        HeartbeatWriter, process_commit_mb, process_handle_count, process_rss_mb)
+
+    minutes = float(args.session_minutes)
+    run_dir = root / f"run-session-{_dt.now():%Y%m%dT%H%M%S}"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    monitor = run_dir / "monitor.jsonl"
+    sess = ReplaySession(cfg=cfg, out_dir=run_dir,
+                         lock_root=Path(args.lock_root) if args.lock_root else root)
+    start = sess.start()
+    if not start.ok:
+        print(json.dumps({"ok": False, "reason": start.reason}, ensure_ascii=False))
+        return 4
+
+    rt = sess.rt
+    hb = HeartbeatWriter(run_dir / "heartbeat.json", rt.run_id)
+    t0 = _time.monotonic()
+    deadline = t0 + minutes * 60.0
+    next5 = t0
+    next15 = t0
+    next30 = t0
+    seg_rows: List[Dict[str, Any]] = []
+    anomalies: List[str] = []
+
+    def snap(tag: str) -> Dict[str, Any]:
+        h = rt.health()
+        broker = rt.ctx.service("broker")
+        orders = broker.orders_snapshot() if broker else []
+        inv = rt._last_invariants
+        row = {
+            "tag": tag,
+            "wall_at": _dt.now().isoformat(timespec="seconds"),
+            "elapsed_min": round((_time.monotonic() - t0) / 60.0, 2),
+            "rss_mb": process_rss_mb(), "commit_mb": process_commit_mb(),
+            "handles": process_handle_count(),
+            "threads": threading.active_count(),
+            "gc_objects": len(gc.get_objects()),
+            "gc_count": list(gc.get_count()),
+            "state": rt.machine.state.value, "health": h.get("aggregate"),
+            "segments": sess._segments, "ticks": rt._ticks,
+            "orders": len(orders), "fills": len(rt.ledger.fills()),
+            "positions": len([p for p in (broker._state.get("positions") or {}).values()
+                              if float(p.get("qty", 0) or 0) != 0]) if broker else 0,
+            "cash_usd": round(float((broker._state.get("cash") or {}).get("USD", 0.0)), 2)
+            if broker else None,
+            "invariants_ok": bool(inv.ok) if inv is not None else None,
+        }
+        with open(monitor, "a", encoding="utf-8", newline="\n") as fh:
+            fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+        hb.beat(row["state"], row["ticks"],
+                {"segments": row["segments"], "fills": row["fills"],
+                 "rss_mb": row["rss_mb"], "invariants_ok": row["invariants_ok"]})
+        return row
+
+    snap("t0")
+    try:
+        stop_flag = run_dir / "stop.request"
+        while _time.monotonic() < deadline:
+            if stop_flag.exists():
+                print(json.dumps({"stop_requested": True,
+                                  "detail": stop_flag.read_text(
+                                      encoding="utf-8", errors="replace")[:200]},
+                                 ensure_ascii=False), flush=True)
+                break
+            row = sess.run_segment()
+            seg_rows.append(row)
+            hb.beat(row["state"], rt._ticks,
+                    {"segments": sess._segments, "fills": len(rt.ledger.fills()),
+                     "rss_mb": process_rss_mb()})
+            # 控制节奏：每段代表一个交易日，过快会产生不现实的订单量
+            if args.segment_interval and _time.monotonic() < deadline:
+                _time.sleep(float(args.segment_interval))
+            if row["state"] in ("HALTED", "FAILED"):
+                anomalies.append(f"会话在第 {row['segment']} 段进入 {row['state']}")
+                break
+            nowm = _time.monotonic()
+            if nowm >= next30:
+                next30 = nowm + 1800
+                s30 = snap("30min-health")
+                pre = {"ok": rt.health().get("aggregate") == "OK",
+                       "components": list(rt.registry.names())}
+                if not pre["ok"]:
+                    anomalies.append(f"30 分钟健康检查异常：{pre}")
+                with open(monitor, "a", encoding="utf-8", newline="\n") as fh:
+                    fh.write(json.dumps({"tag": "30min-preflight", **pre},
+                                        ensure_ascii=False) + "\n")
+            if nowm >= next15:
+                next15 = nowm + 900
+                from ai_trader.paper_runtime.invariants import check_all
+                rep = check_all(rt.ctx.service("broker"), rt.ledger,
+                                settlement=rt.ctx.service("settlement"),
+                                short_allowed=False)
+                with open(monitor, "a", encoding="utf-8", newline="\n") as fh:
+                    fh.write(json.dumps({"tag": "15min-invariants",
+                                         "ok": rep.ok,
+                                         "failed": [r.name for r in rep.results if not r.ok]},
+                                        ensure_ascii=False) + "\n")
+                if not rep.ok:
+                    anomalies.append("15 分钟不变量失败：" +
+                                     ",".join(r.name for r in rep.results if not r.ok))
+            if nowm >= next5:
+                next5 = nowm + 300
+                snap("5min")
+    finally:
+        final = snap("before-stop")
+        stopres = sess.stop("session_end")
+        final_state = rt.machine.state.value
+
+        idle_rows = []
+        if args.idle_minutes and args.idle_minutes > 0:
+            idle_end = _time.monotonic() + float(args.idle_minutes) * 60.0
+            while _time.monotonic() < idle_end:
+                _time.sleep(min(60.0, max(1.0, idle_end - _time.monotonic())))
+                idle_rows.append({"tag": "idle", "min": round(
+                    (idle_end - _time.monotonic()) / 60.0, 1),
+                    "rss_mb": process_rss_mb(), "commit_mb": process_commit_mb(),
+                    "handles": process_handle_count(),
+                    "gc_objects": len(gc.get_objects())})
+
+        summary = {
+            "ok": not anomalies and final_state in ("RUNNING", "READY", "STOPPED"),
+            "run_id": rt.run_id, "run_dir": str(run_dir),
+            "planned_minutes": minutes,
+            "segments": sess._segments, "ticks": rt._ticks,
+            "fills": len(rt.ledger.fills()),
+            "final_state": final_state,
+            "stop": stopres.as_dict(),
+            "anomalies": anomalies,
+            "first": final, "idle": idle_rows,
+            "session": sess.summary(),
+            "segments_tail": seg_rows[-10:],
+        }
+        (run_dir / "run_report.json").write_text(
+            json.dumps(summary, ensure_ascii=False, indent=2, default=str),
+            encoding="utf-8")
+        print(json.dumps({k: summary[k] for k in
+                          ("ok", "segments", "ticks", "fills", "final_state",
+                           "anomalies", "run_dir")}, ensure_ascii=False))
+    return 0 if not anomalies else 3
+
+
+# ---------------------------------------------------------------------- #
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="python -m ai_trader.paper_runtime",
@@ -340,8 +492,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--status", action="store_true",
                    help="查看最近一次运行状态（不启动任何东西）")
     p.add_argument("--config", default=None, help="配置文件路径")
+    p.add_argument("--log-file", default=None,
+                   help="把本进程 stdout/stderr 写到该文件（后台启动时不丢日志）")
+    p.add_argument("--lock-root", default=None,
+                   help="单实例锁所在目录（默认取 --out 根目录）")
     p.add_argument("--run-dir", default=None,
                    help="固定运行目录（崩溃/恢复实验用；不传则按时间戳新建）")
+    p.add_argument("--session-minutes", type=float, default=None,
+                   help="复用单运行体的连续会话时长（分钟），单一账户/单一库")
+    p.add_argument("--segment-interval", type=float, default=3.0,
+                   help="复用会话中每个交易段之间的真实间隔秒数（控制压力速率）")
+    p.add_argument("--idle-minutes", type=float, default=0.0,
+                   help="停止后静置观察内存的分钟数（0 = 不等待）")
     p.add_argument("--recover-only", action="store_true",
                    help="只做启动+恢复扫描，不交易（验证崩溃后状态）")
     return p
@@ -349,6 +511,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Optional[List[str]] = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.log_file:
+        lf = Path(args.log_file)
+        lf.parent.mkdir(parents=True, exist_ok=True)
+        _fh = open(lf, "a", encoding="utf-8", buffering=1, newline="\n")
+        sys.stdout = _fh
+        sys.stderr = _fh
     cfg = load_config(Path(args.config) if args.config else None)
     root = _run_root(cfg, args.out)
 
@@ -373,6 +541,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         print("硬性保护检查未通过：" + "; ".join(problems), file=sys.stderr)
         return 2
 
+    if args.session_minutes:
+        return cmd_session(cfg, args, root)
     if args.soak_minutes:
         return cmd_soak(cfg, args, root)
     if args.replay:

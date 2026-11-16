@@ -77,6 +77,12 @@ class ScriptedModel(AIModel):
             (s.tick, s.symbol.upper()): s for s in self.steps}
 
     # ------------------------------------------------------------------ #
+    def load(self, steps: Sequence[ScriptStep]) -> None:
+        """原地换剧本（供 Runtime 复用；不新建对象）。"""
+        self.steps = list(steps)
+        self._by_key = {(s.tick, s.symbol.upper()): s for s in self.steps}
+        self.tick = 0
+
     def set_tick(self, tick: int) -> None:
         self.tick = int(tick)
 
@@ -92,6 +98,11 @@ class ScriptedModel(AIModel):
         self.calls += 1
         sym = str(ctx.symbol).upper()
         step = self._by_key.get((self.tick, sym))
+        if step is not None and str(step.action).lower() == "sell":
+            # 没有持仓时卖单必然是"数量 0"，属于无效剧本 —— 直接 hold
+            pos = (ctx.position or {}) if isinstance(ctx.position, dict) else {}
+            if float(pos.get("qty", 0) or 0) <= 0:
+                step = None
         if step is None:
             return TradingSignal(
                 symbol=sym.lower(), action=self.default_action, confidence=0.0,

@@ -58,3 +58,8 @@ p2_results.xml
 _dbg_*.py
 t*.xml
 data/paper_runs/
+
+# ---- 内存剖析/临时压测产物 ----
+data/memprof*/
+data/memtrim*/
+data/paper_runs/

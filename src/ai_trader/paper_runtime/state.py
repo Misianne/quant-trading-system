@@ -46,7 +46,9 @@ class RuntimeState(str, Enum):
 
 #: 白名单迁移。**不在表里 = 非法**。
 TRANSITIONS: Dict[RuntimeState, Tuple[RuntimeState, ...]] = {
-    RuntimeState.STOPPED: (RuntimeState.PREFLIGHT,),
+    # STOPPED → FAILED：启动前就失败（如单实例锁被占用），
+    # 此时还没进 PREFLIGHT，但语义上必须能落到 FAILED，否则会抛非法迁移掩盖真实原因。
+    RuntimeState.STOPPED: (RuntimeState.PREFLIGHT, RuntimeState.FAILED),
     RuntimeState.PREFLIGHT: (RuntimeState.INITIALIZING, RuntimeState.FAILED,
                              RuntimeState.STOPPED),
     RuntimeState.INITIALIZING: (RuntimeState.READY, RuntimeState.FAILED,

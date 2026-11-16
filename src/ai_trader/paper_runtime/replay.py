@@ -52,6 +52,18 @@ class ReplayQuoteSource:
     def set_tick(self, tick: int) -> None:
         self.tick = int(tick)
 
+    def load(self, *, prices: Dict[str, List[float]],
+             prev_close: Optional[Dict[str, float]] = None,
+             down_ticks: Sequence[int] = ()) -> None:
+        """原地换一组行情（供 Runtime 复用；不新建对象）。"""
+        self.prices = {str(k).upper(): list(v) for k, v in prices.items()}
+        self.prev_close = {str(k).upper(): float(v)
+                           for k, v in (prev_close or {}).items()}
+        self.down_ticks = tuple(int(x) for x in down_ticks)
+        self.tick = 0
+        self.calls = 0
+        self.failures = 0
+
     def _now(self) -> datetime:
         from .. import timebase
         return timebase.now()
@@ -324,7 +336,8 @@ class ReplayResult:
 
 
 def build_runtime_for(scenario: ReplayScenario, *, cfg: Any, out_dir: Path,
-                      journal: Any = None, explicit_paper: bool = True):
+                      journal: Any = None, explicit_paper: bool = True,
+                      lock_root: Optional[Path] = None):
     """按场景构造一个**全新**的 PaperRuntime（运行目录独立 → 起点状态一致）。"""
     from .. import timebase
     from ..market.status import MarketStatusService
@@ -352,7 +365,8 @@ def build_runtime_for(scenario: ReplayScenario, *, cfg: Any, out_dir: Path,
     rt = PaperRuntime(cfg=cfg, paper_cfg=paper_cfg, clocks={"us": clock},
                       quote_source=src, model=model, journal=journal,
                       symbols=sorted(scenario.price_series()), run_dir=out_dir,
-                      clock=replay_clock, explicit_paper=explicit_paper)
+                      clock=replay_clock, explicit_paper=explicit_paper,
+                      lock_root=lock_root)
     return rt, replay_clock, src, model
 
 

@@ -163,3 +163,25 @@ def _isolated_credential_registry():
     _CRED_ENV.clear()
     yield
     _CRED_ENV.clear()
+
+
+@pytest.fixture(autouse=True)
+def _isolate_timebase():
+    """每个测试结束后强制还原全局时钟（兜底，不依赖各测试自觉）。
+
+    回放测试会 ``timebase.install(ManualClock)``。一旦某个用例忘记还原，
+    后续所有依赖"现在"的用例都会被污染 —— 表现为大面积时间相关断言失败，
+    而且很难定位到真正的原因。这里把它变成结构上不可能发生。
+    """
+    yield
+    try:
+        from ai_trader.paper_runtime.timebase_bridge import active, restore_clock
+        while active():
+            restore_clock()
+    except Exception:  # noqa: BLE001 - 清理阶段不允许影响测试结果
+        pass
+    try:
+        from ai_trader import timebase
+        timebase.restore()
+    except Exception:  # noqa: BLE001
+        pass

@@ -138,7 +138,8 @@ class PaperRuntime:
                  quote_source: Any, model: Any, journal: Any,
                  symbols: List[str], run_dir: Path, clock: Any,
                  explicit_paper: bool = False, allow_live: bool = False,
-                 on_tick: Optional[Callable[["PaperRuntime"], None]] = None):
+                 on_tick: Optional[Callable[["PaperRuntime"], None]] = None,
+                 lock_root: Optional[Path] = None):
         self.cfg = cfg
         self.paper_cfg = dict(paper_cfg or {})
         self.clocks = dict(clocks or {})
@@ -172,6 +173,14 @@ class PaperRuntime:
         self._state_path = self.run_dir / "paper_state.json"
         self._ledger_path = self.run_dir / "paper_fills.jsonl"
         self._stops_path = self.run_dir / "stops.json"
+        # 单实例锁：同一 run_root 只允许一个运行时
+        from .lock import InstanceLock
+        # 锁必须落在**账户根目录**（同一 --out 只允许一个实例），
+        # 不能落在单次运行目录（那样每次新建目录就等于没有互斥）
+        _lock_dir = Path(lock_root) if lock_root is not None else self.run_dir.parent
+        self.lock = InstanceLock(_lock_dir / "paper_runtime.lock",
+                                 run_id=self.run_id)
+        self._lock_info = None
         self.ledger = FillLedger(self._ledger_path)
         # 审计库：未注入时在本运行目录内自建（**不**复用线上 audit.db）
         # 记录所有权：自己开的连接必须自己关，否则长跑会持续泄漏句柄
@@ -251,6 +260,15 @@ class PaperRuntime:
             if st is RuntimeState.INITIALIZING:
                 return StartResult(False, st.value, reason="正在初始化（拒绝并发启动）")
 
+            # ---- 单实例约束（必须在一切初始化之前）------------------ #
+            self._lock_info = self.lock.acquire()
+            self._audit("lock_acquire", self._lock_info.as_dict())
+            if not self._lock_info.acquired:
+                self.machine.to_failed(f"单实例锁未获取：{self._lock_info.reason}")
+                return StartResult(False, self.machine.state.value,
+                                   reason=f"单实例锁未获取：{self._lock_info.reason}",
+                                   components={"lock": self._lock_info.as_dict()})
+
             # ---- PREFLIGHT ------------------------------------------- #
             self.machine.to_preflight("start()")
             pre = run_preflight(
@@ -263,6 +281,7 @@ class PaperRuntime:
                     f"{c.name}({c.detail})" for c in pre.failures)
                 self.machine.to_failed(reason)
                 self._audit("preflight_failed", pre.as_dict())
+                self.lock.release()
                 return StartResult(False, self.machine.state.value, reason=reason,
                                    preflight=pre.as_dict())
 
@@ -272,6 +291,7 @@ class PaperRuntime:
             if missing:
                 reason = f"缺少必需组件：{missing}"
                 self.machine.to_failed(reason)
+                self.lock.release()
                 return StartResult(False, self.machine.state.value, reason=reason,
                                    preflight=pre.as_dict())
 
@@ -308,6 +328,7 @@ class PaperRuntime:
                                                   "backfill_failed")))
                 self.registry.stop_all(self.ctx)
                 self.machine.to_failed(reason)
+                self.lock.release()
                 return StartResult(False, self.machine.state.value, reason=reason,
                                    preflight=pre.as_dict(),
                                    components=self.registry.as_dict())
@@ -362,12 +383,14 @@ class PaperRuntime:
         return False, f"运行状态 {self.machine.state.value} 不允许任何交易"
 
     # ------------------------------------------------------------------ #
-    def tick(self, *, index: Optional[int] = None) -> TickResult:
+    def tick(self, *, index: Optional[int] = None,
+             model_tick: Optional[int] = None) -> TickResult:
         """执行一个运行周期：行情 → 策略 → 风控 → 订单 → 入账 → 不变量。"""
         if self.machine.state not in (RuntimeState.RUNNING, RuntimeState.DEGRADED):
             raise RuntimeError(f"tick 只在 RUNNING/DEGRADED 下允许，当前 {self.machine.state.value}")
         if self.model is not None and hasattr(self.model, "set_tick"):
-            self.model.set_tick(self._ticks)
+            # 复用会话按"段内 tick"驱动剧本；单次回放不传，沿用累计 tick
+            self.model.set_tick(self._ticks if model_tick is None else int(model_tick))
         now = timebase.now()
         tr = TickResult(index=self._ticks, at=now.isoformat(timespec="seconds"))
 
@@ -622,6 +645,10 @@ class PaperRuntime:
             res = self.registry.stop_all(self.ctx)
             self._stop_errors = list(res.errors)
             self.machine.to_stopped("released")
+            try:
+                self.lock.release()
+            except Exception as exc:  # noqa: BLE001
+                self._stop_errors.append(f"释放实例锁失败：{type(exc).__name__}: {exc}")
             # 审计必须**先写**，再关连接 —— 否则最后一条停止记录写不进去
             self._audit("runtime_stopped", {
                 "ok": res.ok, "errors": res.errors, "run_id": self.run_id,
@@ -671,11 +698,30 @@ class PaperRuntime:
             except Exception as exc:  # noqa: BLE001
                 payload["detail"] = dict(detail) | {"_journal_error": str(exc)}
         try:
-            with open(self.run_dir / "runtime.jsonl", "a", encoding="utf-8",
-                      newline="\n") as fh:
+            path = self.run_dir / "runtime.jsonl"
+            _rotate_log(path, max_bytes=int(self.paper_cfg.get("max_log_bytes", 5_000_000)))
+            with open(path, "a", encoding="utf-8", newline="\n") as fh:
                 fh.write(json.dumps(payload, ensure_ascii=False, default=str) + "\n")
         except OSError:
             logger.error("审计写入失败：%s", event)
+
+
+def _rotate_log(path: Path, *, max_bytes: int = 5_000_000, keep: int = 3) -> None:
+    """按大小轮转日志：runtime.jsonl → .1 → .2 → .3（不删历史，只滚动）。"""
+    try:
+        if max_bytes <= 0 or not path.exists() or path.stat().st_size < max_bytes:
+            return
+        for i in range(keep - 1, 0, -1):
+            src = path.with_name(f"{path.name}.{i}")
+            dst = path.with_name(f"{path.name}.{i + 1}")
+            if src.exists():
+                if dst.exists():
+                    dst.unlink()
+                src.replace(dst)
+        path.replace(path.with_name(f"{path.name}.1"))
+    except OSError:
+        # 轮转失败不能影响主流程（宁可继续写当前文件）
+        pass
 
 
 def _short_mode(paper_cfg: Dict[str, Any]):
