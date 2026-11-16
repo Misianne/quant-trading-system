@@ -20,6 +20,7 @@
 本模块只负责"给定日期是否在节假日表内"这一判断。
 """
 from __future__ import annotations
+from .. import timebase
 
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, time, timedelta, tzinfo
@@ -193,7 +194,7 @@ class ExchangeClock:
         naive 输入按**本机时区**解释（与 ``datetime.now()`` 的语义一致）——
         调用方（引擎/测试）几乎都传 naive 的"本机时间"。
         """
-        dt = now or datetime.now()
+        dt = now or timebase.now()
         if dt.tzinfo is None:
             dt = dt.astimezone()          # 视为本机时区
         return dt.astimezone(self.tz)

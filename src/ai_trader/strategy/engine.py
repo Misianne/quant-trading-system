@@ -22,6 +22,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .. import timebase
 from ..ai.authority import CODE_STALE, DecisionAuthority
 from ..ai.base import AIModel, AIModelError, MarketContext, TradingSignal
 from ..ai.providers import build_model
@@ -113,13 +114,17 @@ class StrategyEngine:
                  risk: RiskController, journal: AuditJournal,
                  stops_path: Optional[Path] = None,
                  allow_rule_engine_entry: bool = False,
-                 feed=None):
+                 feed=None,
+                 phase2_override: Optional[Dict[str, Any]] = None):
         self.cfg = cfg
         self.broker = broker
         # ---- US-P2-A 收口：所有行情读取统一走网关（结构上消除旁路）----
         # 时钟复用风控的 rules.clocks，保证"时段判定"和"交易规则"用的是同一套时区/日历。
         _clocks = getattr(getattr(risk, "rules", None), "clocks", {}) or {}
-        _p2 = (cfg.raw.get("us_phase2") or {})
+        # ``phase2_override``：仅供 PaperRuntime 在**本实例作用域**内启用 P2 检查，
+        # 不改全局 ``us_phase2.enabled``（那是全站开关，本轮必须保持 false）。
+        _p2 = (phase2_override if phase2_override is not None
+               else (cfg.raw.get("us_phase2") or {}))
         self.quote_gateway = QuoteGateway(
             broker, _clocks,
             enabled=bool(_p2.get("enabled", False)),
@@ -213,7 +218,7 @@ class StrategyEngine:
     # 组合快照
     # ------------------------------------------------------------------ #
     def build_portfolio(self, currency: str = "HKD", now: Optional[datetime] = None) -> Portfolio:
-        now = now or datetime.now()
+        now = now or timebase.now()
         summary = self.broker.get_summary(currency)
         positions = self.broker.get_positions()
         start = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -465,7 +470,7 @@ class StrategyEngine:
         """
         try:
             positions = self.broker.get_positions()
-            self._cache_positions(positions, datetime.now())
+            self._cache_positions(positions, timebase.now())
             self._positions_stale = False
             self._positions_verified = True
             return positions
@@ -713,6 +718,12 @@ class StrategyEngine:
         if not decision.approved:
             return SymbolOutcome(symbol, "rejected", decision.explain(),
                                  signal=signal.as_dict(), decision=decision.as_dict())
+        # 故障注入点：风控已通过、尚未下单（用于验证"崩溃不产生幽灵订单"）
+        try:
+            from ..paper_runtime import fault_inject as _fi
+            _fi.check("after_risk")
+        except ImportError:                       # pragma: no cover
+            pass
 
         # ---- 执行 ----
         held_now = float(portfolio.position_of(symbol).qty) if portfolio.position_of(symbol) else 0.0
@@ -758,7 +769,7 @@ class StrategyEngine:
         detail = {
             "symbol": symbol, "code": code, "reason": reason,
             "model": f"{self.model.name}/{self.model.model_id}",
-            "at": (now or datetime.now()).astimezone().isoformat(timespec="seconds"),
+            "at": (now or timebase.now()).astimezone().isoformat(timespec="seconds"),
             "action_taken": "no_new_entry",
             "note": "已有持仓不受影响，止损/止盈仍由 monitor() 执行",
         }
@@ -967,7 +978,7 @@ class StrategyEngine:
         # 已确认停牌 / LULD 暂停 / MWCB 暂停时不得把订单发给券商。
         _ms = getattr(self.risk, "market_status", None)
         if getattr(self.risk, "phase2_enabled", False) and _ms is not None:
-            _now_aware = datetime.now().astimezone()
+            _now_aware = timebase.now()
             _sub = _ms.submit_gate(intent.symbol, is_exit=bool(intent.is_exit),
                                    now=_now_aware, price=intent.price)
             if not _sub.allowed:
@@ -1195,7 +1206,7 @@ class StrategyEngine:
     # ------------------------------------------------------------------ #
     def scan(self, symbols: Optional[List[str]] = None, now: Optional[datetime] = None) -> ScanReport:
         with self._lock:
-            now = now or datetime.now()
+            now = now or timebase.now()
             report = ScanReport(
                 started_at=utcnow_iso(),
                 model=f"{self.model.name}/{self.model.model_id}",
@@ -1252,7 +1263,7 @@ class StrategyEngine:
         这是"单个数据库方法异常不能导致整个 monitor 静默退出"的落地点。
         """
         with self._lock:
-            now = now or datetime.now()
+            now = now or timebase.now()
             executed: List[Dict[str, Any]] = []
             self._orders_unknown = False
 

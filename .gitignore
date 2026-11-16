@@ -53,3 +53,8 @@ audit_evidence/
 
 # ---- 测试产物 ----
 p2_results.xml
+
+# ---- 本地临时产物（调试脚本 / 中间测试报告 / Paper 运行目录）----
+_dbg_*.py
+t*.xml
+data/paper_runs/

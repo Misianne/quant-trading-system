@@ -34,6 +34,7 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Dict, Iterable, List, Optional
 
+from .. import timebase
 from .luld import normalize_symbol
 
 
@@ -141,7 +142,7 @@ class ResumeAuthority:
     def _record(self, ev: ResumeEvent, accepted: bool, code: str = "",
                 message: str = "", now: Optional[datetime] = None) -> None:
         self.audit.append(AuthorityAudit(
-            ts=now or datetime.now(timezone.utc), provider=ev.provider,
+            ts=now or timebase.utcnow(), provider=ev.provider,
             symbol=normalize_symbol(ev.symbol), exchange=ev.exchange,
             accepted=accepted, code=code, message=message))
 
@@ -159,7 +160,7 @@ class ResumeAuthority:
                trading_date: str, pause_event_id: str,
                auction_id: str, now: Optional[datetime] = None) -> None:
         """校验一条恢复事件；通过返回 None，否则抛 :class:`ResumeRejected`。"""
-        now = now or datetime.now(timezone.utc)
+        now = now or timebase.utcnow()
 
         # 1) provider 身份
         spec = self.providers.get(ev.provider)
@@ -275,6 +276,6 @@ def make_resume_event(lifecycle: Any, *, provider: str = "test.exchange-sim",
         else (getattr(pause, "pause_event_id", "") if pause else ""),
         auction_id=auction_id if auction_id is not None else (auction.auction_id or ""),
         event_version=event_version if event_version is not None else (lifecycle.version + 1),
-        event_ts=ts or datetime.now(timezone.utc),
+        event_ts=ts or timebase.utcnow(),
         status=status,
     )

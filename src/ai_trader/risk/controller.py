@@ -17,6 +17,7 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
+from .. import timebase
 from ..broker.base import Position, Quote
 from ..config import AppConfig, SafetyGate
 from ..market.clock import ClockError, build_clock
@@ -163,7 +164,7 @@ class RiskDecision:
         if not self.decision_id:
             self.decision_id = uuid.uuid4().hex[:16]
         if not self.ts:
-            self.ts = datetime.now().astimezone().isoformat(timespec="seconds")
+            self.ts = timebase.now().isoformat(timespec="seconds")
         if not self.requested_qty:
             self.requested_qty = float(self.intent.qty or 0)
 
@@ -246,7 +247,8 @@ class RiskController:
                  market_status: Any = None,
                  short_guard: Any = None,
                  settlement: Any = None,
-                 caps: Any = None):
+                 caps: Any = None,
+                 phase2_override: Optional[Dict[str, Any]] = None):
         self.cfg = cfg
         self.gate = gate or cfg.gate
         # B4：交易规则（板块/T+1/涨跌停/最小单位/停牌/日历）
@@ -273,7 +275,10 @@ class RiskController:
         # ---- US-P2/P3 接入（显式组件注入；未开启时行为与旧版完全一致）----
         # 设计：只有 ``us_phase2.enabled=true`` 才跑新增检查。
         # 一旦开启，缺少任一组件就 fail-closed —— 不允许"半接入"假装通过。
-        p2 = (cfg.raw.get("us_phase2") or {})
+        # ``phase2_override``：PaperRuntime 在本实例作用域内启用 P2 检查，
+        # 不改全局 ``us_phase2.enabled``。默认 None → 读配置（既有行为不变）。
+        p2 = (phase2_override if phase2_override is not None
+              else (cfg.raw.get("us_phase2") or {}))
         self.phase2_enabled = bool(p2.get("enabled", False))
         self.phase2_checks = dict(p2.get("checks") or {})
         self.market_status = market_status
@@ -301,14 +306,14 @@ class RiskController:
         return bool(cfg.get("enabled", False))
 
     def recent_order_count(self, seconds: int = 60, now: Optional[datetime] = None) -> int:
-        now = _aware(now) or datetime.now().astimezone()
+        now = _aware(now) or timebase.now()
         cutoff = now - timedelta(seconds=seconds)
         self._recent_orders = [r for r in self._recent_orders if r[0] >= cutoff]
         return len(self._recent_orders)
 
     def note_order(self, symbol: str, side: str, qty: float, now: Optional[datetime] = None) -> None:
         """下单成功后登记，用于频率与重复检测。"""
-        self._recent_orders.append((_aware(now) or datetime.now().astimezone(),
+        self._recent_orders.append((_aware(now) or timebase.now(),
                                     symbol.lower(), side, float(qty)))
 
     def halt(self, reason: str, actor: str = "system") -> None:
@@ -404,7 +409,7 @@ class RiskController:
         checks: List[CheckResult] = []
         reasons: List[str] = []
         warnings: List[str] = []
-        now = _aware(now) or datetime.now().astimezone()
+        now = _aware(now) or timebase.now()
         recent_orders = recent_orders or []
 
         try:
@@ -1107,7 +1112,7 @@ class RiskController:
         """
         sym_l = (sym or "").lower()
         side = (side or "").lower()
-        now = _aware(now) or datetime.now().astimezone()
+        now = _aware(now) or timebase.now()
         skew = timedelta(seconds=int(self.cfg.risk.get("max_clock_skew_seconds", 300) or 300))
         cutoff = now - timedelta(seconds=self.duplicate_window)
         upper = now + skew

@@ -279,7 +279,14 @@ class Broker:
 
 
 def now_iso() -> str:
-    return datetime.now().astimezone().isoformat(timespec="seconds")
+    """统一时间戳来源。
+
+    走 :mod:`ai_trader.timebase`，因此回放（Replay）时订单/成交/审计的时间戳
+    与回放时钟一致，而不是系统真实时间 —— 这是"同一数据集结果确定"的前提。
+    生产环境行为与 ``datetime.now().astimezone()`` 完全一致。
+    """
+    from .. import timebase
+    return timebase.now().isoformat(timespec="seconds")
 
 
 def derive_client_id(decision_id: str, signal_id: str = "", symbol: str = "",

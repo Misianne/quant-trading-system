@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+from .. import timebase
 from .clock import (
     PHASE_CLOSED,
     PHASE_HOLIDAY,
@@ -149,7 +150,7 @@ class QuoteNormalizer:
     # ------------------------------------------------------------------ #
     def ingest(self, quote: SessionQuote, now: Optional[datetime] = None) -> IngestResult:
         """受理或拒绝一帧行情。"""
-        now = now or datetime.now(timezone.utc)
+        now = now or timebase.utcnow()
         if now.tzinfo is None:
             raise QuoteError("now 必须带时区")
 
@@ -225,7 +226,7 @@ class SessionPricePolicy:
             raise QuoteUnavailable(
                 f"{symbol} 只有 {q.phase} 时段行情，{use_case} 要求 {'/'.join(allowed)}；"
                 f"禁止跨时段冒用")
-        now = now or datetime.now(timezone.utc)
+        now = now or timebase.utcnow()
         limit = self.max_age.get(q.phase, self.max_age[PHASE_REGULAR])
         if q.age_seconds(now) > limit:
             raise QuoteUnavailable(

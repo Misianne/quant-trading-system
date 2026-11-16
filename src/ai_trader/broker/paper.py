@@ -21,6 +21,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import random
 import threading
 import uuid
@@ -29,6 +30,8 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .. import timebase
+from ..paper_runtime import fault_inject
 from .base import (
     AccountInfo,
     AccountSummary,
@@ -130,7 +133,7 @@ class SyntheticQuoteSource(QuoteSource):
         rng = random.Random(self._seed(symbol) ^ 0x5EED)
         closes = self._walk(symbol, num)
         candles: List[Candle] = []
-        start = datetime.now() - timedelta(days=num)
+        start = timebase.now() - timedelta(days=num)
         prev = closes[0]
         for i, c in enumerate(closes):
             o = prev
@@ -182,6 +185,7 @@ class PaperBroker(Broker):
         allow_short: bool = False,
         settlement: Any = None,
         market_status: Any = None,
+        deterministic_ids: bool = False,
     ):
         self.state_path = Path(state_path)
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
@@ -197,6 +201,9 @@ class PaperBroker(Broker):
         #: US-P2-C 阶段 C：市场状态。暂停期间**不得产生成交**。
         self.market_status = market_status
         self.quote_source = quote_source or SyntheticQuoteSource()
+        #: 回放模式：订单号用"种子 + 递增序号"而不是 uuid，
+        #: 这样同一场景重复运行的成交/订单/账本指纹完全一致。
+        self.deterministic_ids = bool(deterministic_ids)
         self._lock = threading.RLock()
         self._state = self._load()
         self.connected = True
@@ -210,7 +217,8 @@ class PaperBroker(Broker):
             "orders": {},             # order_id -> order dict
             "realized_pnl": {},       # currency -> float
             "day_start_equity": {},   # currency -> float
-            "day": date.today().isoformat(),
+            "day": timebase.now().date().isoformat(),
+            "order_seq": 0,
         }
 
     def _load(self) -> Dict[str, Any]:
@@ -227,13 +235,40 @@ class PaperBroker(Broker):
         return st
 
     def _save(self) -> None:
-        self.state_path.write_text(
-            json.dumps(self._state, indent=2, ensure_ascii=False, default=str), encoding="utf-8"
-        )
+        """原子落盘：临时文件 → fsync → ``os.replace``。
+
+        为什么不能直接 ``write_text``：写到一半崩溃会留下**截断的 JSON**，
+        下次启动 ``_load`` 解析失败后走 ``_default_state`` —— 账户直接"归零"，
+        这是最危险的一种崩溃恢复行为（比拒绝启动还坏）。
+        """
+        tmp = self.state_path.with_name(self.state_path.name + ".tmp")
+        payload = json.dumps(self._state, indent=2, ensure_ascii=False, default=str)
+        with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(payload)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, self.state_path)
+        # 目录项也要落盘，否则某些文件系统上 rename 可能丢失
+        try:
+            dir_fd = os.open(str(self.state_path.parent), os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
+        except (OSError, AttributeError):   # Windows 不支持目录 fsync
+            pass
+
+    def _new_order_id(self) -> str:
+        """生成订单号。回放模式确定性，生产模式保持 uuid 随机。"""
+        if not self.deterministic_ids:
+            return "P" + uuid.uuid4().hex[:14]
+        seq = int(self._state.get("order_seq", 0)) + 1
+        self._state["order_seq"] = seq
+        return f"PR{seq:08d}"
 
     def _roll_day(self, quotes: Optional[Dict[str, Quote]] = None) -> None:
         """跨日重置日内基准（用于单日亏损统计）。"""
-        today = date.today().isoformat()
+        today = timebase.now().date().isoformat()
         if self._state.get("day") != today:
             self._state["day"] = today
             self._state["day_start_equity"] = {
@@ -334,13 +369,14 @@ class PaperBroker(Broker):
             if not req.qty or float(req.qty) <= 0:
                 raise OrderRejected("数量必须大于 0")
 
+            fault_inject.check("before_order")
             sym = req.symbol
             market = req.market or market_of(sym)
             currency = req.currency or currency_of(sym)
             qty = float(req.qty)
             quote = self.quote_source.quote(sym)
             ref_price = float(req.price) if req.price is not None else quote.last
-            order_id = "P" + uuid.uuid4().hex[:14]
+            order_id = self._new_order_id()
 
             # ---- US-P2-B：订单类型 / TIF（统一枚举，禁止静默降级）----
             from .orders import OrderType, TimeInForce, apply_tif, parse_order_type, parse_tif
@@ -443,16 +479,18 @@ class PaperBroker(Broker):
                     market_note = _why
 
             if status == "filled":
+                fault_inject.check("before_fill_write")
                 self._apply_fill(sym, market, currency, req.side, fill_qty, exec_price, commission)
+                fault_inject.check("after_position")
                 # US-P2-E：成交即入账（买卖都记），账本按交易日历推进 T+1。
                 if self.settlement is not None and fill_qty > 0 and exec_price:
                     try:
-                        from datetime import date as _date
                         self.settlement.record_trade(
-                            trade_date=_date.today(), side=req.side, symbol=sym,
+                            trade_date=timebase.now().date(), side=req.side, symbol=sym,
                             qty=fill_qty, price=float(exec_price), fee=float(commission),
                             note=f"paper:{order_id}",
                         )
+                        fault_inject.check("after_settlement")
                     except Exception as exc:      # 账本故障不得吞掉成交，但必须留痕
                         self._state.setdefault("settlement_errors", []).append(
                             {"order_id": order_id, "error": str(exc)})
@@ -469,6 +507,7 @@ class PaperBroker(Broker):
                 "order_type": otype,
                 "status": status,
                 "filled_qty": fill_qty,
+                "fill_id": (f"F{order_id}-1" if fill_qty > 0 else ""),
                 "avg_fill_price": exec_price,
                 "commission": commission,
                 "currency": currency,
@@ -483,6 +522,10 @@ class PaperBroker(Broker):
             }
             self._state["orders"][order_id] = order
             self._save()
+            if status == "filled":
+                fault_inject.check("after_fill_write")
+            else:
+                fault_inject.check("after_order_create")
             return self._to_result(order)
 
     def _record_short_borrow(self, sym: str, qty: float, currency: str) -> None:
@@ -618,6 +661,15 @@ class PaperBroker(Broker):
             if filled:
                 self._save()
         return filled
+
+    def orders_snapshot(self) -> List[Dict[str, Any]]:
+        """订单记录的快照（深拷贝）。
+
+        给对账/不变量检查用：调用方拿到的是副本，改它不会污染券商状态。
+        """
+        with self._lock:
+            return [json.loads(json.dumps(o, default=str))
+                    for o in self._state.get("orders", {}).values()]
 
     def health(self) -> Dict[str, Any]:
         with self._lock:

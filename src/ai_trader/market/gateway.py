@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, Optional, Tuple
 
+from .. import timebase
 from ..broker.base import Broker, BrokerError, Quote
 from .clock import ExchangeClock, PHASE_REGULAR, TRADABLE_PHASES
 from .sessions import (
@@ -95,7 +96,7 @@ class QuoteGateway:
         self.enabled = bool(enabled)
         self.stats = GatewayStats()
         #: 可注入的"当前时间"，用于测试与回放；生产走系统 UTC。
-        self._now_fn = now_fn or (lambda: datetime.now(timezone.utc))
+        self._now_fn = now_fn or (lambda: timebase.utcnow())
         self.max_age = dict(DEFAULT_MAX_AGE_SECONDS)
         if max_age_seconds:
             self.max_age.update(max_age_seconds)

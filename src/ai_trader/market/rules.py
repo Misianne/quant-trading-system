@@ -26,6 +26,7 @@ from datetime import date, datetime, time
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from .. import timebase
 from .clock import (
     ClockError,
     ExchangeClock,
@@ -582,7 +583,7 @@ class MarketRuleSet:
         v: List[RuleViolation] = []
         if notes is None:
             notes = []
-        now = now or datetime.now()
+        now = now or timebase.now()
 
         # ---- 1. 板块 / 规则可用性 ----
         rule, why = self.resolve_symbol(symbol)

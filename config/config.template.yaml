@@ -684,3 +684,56 @@ us_phase2:
     settle_lag_days: 1
     margin_multiplier: 2.0
     tolerance: 0.01          # 与券商购买力对账差异阈值（比例）
+
+# =============================================================================
+# 本地 Paper / Replay 运行时（US-PAPER-RUNTIME）
+# =============================================================================
+# 设计原则：
+#   * 默认 enabled: false —— 不会自动启动，必须显式 `--paper` 才会跑
+#   * 与全局 us_phase2.enabled 解耦：PaperRuntime 在**自身作用域**内启用 P2 检查
+#     （四个组件：market_status / short_guard / settlement / caps），
+#     不修改全局开关，不影响 Web/CLI 既有行为
+#   * 本阶段 short.mode 只允许 disabled（配置写错会在初始化阶段 FAILED）
+#   * 只允许本地模拟盘：真实券商/真实订单/真实资金一律拒绝
+# =============================================================================
+paper_runtime:
+
+  enabled: false
+
+  # 运行目录（相对项目根）。每次运行会在此下建 run-<run_id>/
+  run_root: data/paper_runs
+
+  # 单次最长运行时间（秒）；0 = 不限（由 --minutes 控制）
+  max_run_seconds: 1800
+
+  # tick 间隔（秒）。Replay 由场景时钟推进，此值只对实时模式生效
+  tick_interval_seconds: 1.0
+
+  broker:
+    initial_cash:
+      USD: 100000.0
+    commission_bps: 8.0
+    min_commission: 3.0
+    slippage_bps: 5.0
+
+  settlement:
+    currency: USD
+    mode: cash
+    settle_lag_days: 1
+
+  short:
+    mode: disabled
+
+  feed:
+    max_quote_age_seconds: 60
+    max_idle_seconds: 120
+
+  supervisor:
+    # 健康巡检间隔（秒）
+    interval_seconds: 5.0
+    # 连续失败多少次触发熔断（熔断后不自动清除，必须人工 stop）
+    max_consecutive_failures: 3
+    # 非关键故障最多自动恢复几次
+    max_auto_recoveries: 3
+    # 心跳超时（秒）：超过即认为进程失联
+    heartbeat_timeout_seconds: 30

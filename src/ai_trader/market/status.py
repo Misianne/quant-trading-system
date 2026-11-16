@@ -18,6 +18,7 @@ LULD 只在 **9:30–16:00 ET 常规时段**计算；盘前/盘后/夜间一律 
 * 早收市日按**当日实际收盘时间**倒推 25 分钟（不是固定 15:35）
 """
 from __future__ import annotations
+from .. import timebase
 
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
@@ -413,6 +414,8 @@ class MarketStatusService:
         self._last_trade: Dict[str, Tuple[float, datetime]] = {}
         self._bands: Dict[str, LULDBand] = {}
         self._breaches: Dict[str, int] = {}
+        #: 真正**进入暂停**的次数（决定重新开盘带宽翻倍级数）
+        self._pauses: Dict[str, int] = {}
         self._version = 0
         #: US-LULD 完整生命周期（可选接线；接上后 5 分钟到期 ≠ 恢复）
         self.lifecycles: Dict[str, Any] = {}
@@ -673,12 +676,14 @@ class MarketStatusService:
             return LULDResult(LULDAvailability.NO_REFERENCE, state=MarketState.UNKNOWN,
                               note=f"此前 5 分钟无合格成交（样本 "
                                    f"{self.reference.sample_count(sym)}）")
-        self.reference.add(sym, Trade(price=float(price), ts=ts), in_regular=True)
 
         tier = self._tier(sym)
         doubled, why = luld_doubled(tier, ref, bounds.minutes_to_close(ts),
                                     self.luld_close_window)
-        doubling = min(self._breaches.get(sym, 0), LULD_MAX_DOUBLINGS)
+        # 关键：翻倍级数只能由**已发生的暂停**决定。
+        # 若用「Limit State 进入次数」当级数，带宽会在下一笔成交时自动变宽，
+        # 使价格"回到带内"而自我解除 Limit State —— 永远进不了暂停。
+        doubling = min(self._pauses.get(sym, 0), LULD_MAX_DOUBLINGS)
         band = self._compute_band(sym, ref, doubling, doubled=doubled,
                                   prior_close=prior_close, reason=why)
         self._bands[sym] = band
@@ -686,6 +691,12 @@ class MarketStatusService:
         st = self._st(sym, exchange)
         st.band = band
         inside = band.contains(float(price))
+
+        # 官方：**只有带内成交**才进入参考价样本。
+        # 若把越界价也算进 5 分钟均值，参考价会被拉向越界方向、带宽随之变宽，
+        # 下一笔就越界变"带内"，Limit State 会自我解除 —— 暂停永远触发不了。
+        if inside:
+            self.reference.add(sym, Trade(price=float(price), ts=ts), in_regular=True)
 
         # 已在暂停中：只看是否到期
         if st.state == MarketState.LULD_PAUSED:
@@ -719,6 +730,7 @@ class MarketStatusService:
 
         # 超过 15 秒 → 交易暂停（5 分钟）
         self._breaches[sym] = self._breaches.get(sym, 0) + 1
+        self._pauses[sym] = self._pauses.get(sym, 0) + 1
         st.limit_state_since = None
         self._emit(st, HaltKind.LULD, MarketState.LULD_PAUSED, ts, source=source,
                    expected_resume_at=ts + self.luld_pause,
@@ -800,7 +812,7 @@ class MarketStatusService:
         """
         sym = symbol.upper()
         st = self._st(sym, exchange)
-        now = ts or datetime.now(timezone.utc)
+        now = ts or timebase.utcnow()
         self._emit(st, kind, MarketState.HALTED, now, source=source,
                    expected_resume_at=resume_at,
                    note=note or f"停牌（{reason.value}）")
@@ -814,7 +826,7 @@ class MarketStatusService:
         """收到真实恢复通知 → 解除停牌（**唯一**解除交易所停牌的方式）。"""
         sym = symbol.upper()
         st = self._st(sym, exchange)
-        now = ts or datetime.now(timezone.utc)
+        now = ts or timebase.utcnow()
         self._emit(st, HaltKind.EXCHANGE, MarketState.OPEN, now, source=source,
                    recovery_notice_at=now, note=note)
         st.reason = HaltReason.UNKNOWN
@@ -863,7 +875,7 @@ class MarketStatusService:
     def status(self, symbol: str, now: Optional[datetime] = None, *,
                exchange: str = "*") -> SymbolStatus:
         """查询状态。**先解析本单位，再叠加更严格的跨场所事件状态**。"""
-        now = now or datetime.now(timezone.utc)
+        now = now or timebase.utcnow()
         st = self._status_local(symbol, now, exchange=exchange)
         return self._fuse(st, symbol, exchange)
 
@@ -1082,5 +1094,5 @@ class MarketStatusService:
         return LULDBand(symbol=symbol.upper(), reference_price=ref, upper=upper,
                         lower=lower, band_pct=pct,
                         doubling=min(int(doubling), LULD_MAX_DOUBLINGS),
-                        tier=tier, computed_at=datetime.now(timezone.utc),
+                        tier=tier, computed_at=timebase.utcnow(),
                         band_abs=band_abs, doubled=bool(doubled), reason=reason)
