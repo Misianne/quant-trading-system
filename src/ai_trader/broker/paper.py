@@ -180,6 +180,7 @@ class PaperBroker(Broker):
         quote_source: Optional[QuoteSource] = None,
         allow_partial_fill: bool = True,
         allow_short: bool = False,
+        settlement: Any = None,
     ):
         self.state_path = Path(state_path)
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
@@ -190,6 +191,8 @@ class PaperBroker(Broker):
         self.allow_partial_fill = allow_partial_fill
         #: US-P2-D：模拟盘是否允许卖空。默认 False，保持"禁止裸卖空"的安全语义。
         self.allow_short = bool(allow_short)
+        #: US-P2-E：可选的 T+1 结算账本。成交后自动入账，形成"撮合 → 账本"闭环。
+        self.settlement = settlement
         self.quote_source = quote_source or SyntheticQuoteSource()
         self._lock = threading.RLock()
         self._state = self._load()
@@ -422,6 +425,18 @@ class PaperBroker(Broker):
 
             if status == "filled":
                 self._apply_fill(sym, market, currency, req.side, fill_qty, exec_price, commission)
+                # US-P2-E：成交即入账（买卖都记），账本按交易日历推进 T+1。
+                if self.settlement is not None and fill_qty > 0 and exec_price:
+                    try:
+                        from datetime import date as _date
+                        self.settlement.record_trade(
+                            trade_date=_date.today(), side=req.side, symbol=sym,
+                            qty=fill_qty, price=float(exec_price), fee=float(commission),
+                            note=f"paper:{order_id}",
+                        )
+                    except Exception as exc:      # 账本故障不得吞掉成交，但必须留痕
+                        self._state.setdefault("settlement_errors", []).append(
+                            {"order_id": order_id, "error": str(exc)})
 
             order = {
                 "order_id": order_id,

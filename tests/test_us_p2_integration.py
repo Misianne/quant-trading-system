@@ -318,3 +318,22 @@ def test_paper_short_cover_realizes_pnl(tmp_path):
                                qty=10, order_type="market"))
     pos = {p.symbol: p for p in b.get_positions()}
     assert pos.get("usAAPL") is None or abs(pos["usAAPL"].qty) < 1e-9
+
+
+def test_paper_fill_is_recorded_in_settlement_ledger(tmp_path):
+    """撮合 → 账本闭环：成交后账本自动记账，卖出回款进未结算。"""
+    lg = SettlementLedger(currency="USD", mode=AccountMode.CASH, opening_cash=1_000_000.0)
+    b = PaperBroker(state_path=tmp_path / "paper_ledger.json",
+                    initial_cash={"USD": 1_000_000.0},
+                    commission_bps=0.0, min_commission=0.0, slippage_bps=0.0,
+                    quote_source=_FixedQuotes(100.0), settlement=lg)
+    b.place_order(OrderRequest(symbol="usAAPL", market="us", side="buy",
+                               qty=10, order_type="market"))
+    assert lg.settled_cash == pytest.approx(1_000_000.0 - 1000.0)
+
+    b.place_order(OrderRequest(symbol="usAAPL", market="us", side="sell",
+                               qty=10, order_type="market"))
+    # 卖出回款 1000 进"未结算"，现金账户购买力不认它
+    assert lg.unsettled_cash == pytest.approx(1000.0)
+    assert lg.buying_power() == pytest.approx(999_000.0)
+    assert lg.snapshot()["unsettled_entries"] == 1
