@@ -395,3 +395,42 @@ def test_get_without_params_still_sends_empty_envelope():
     assert call["params"] is None
     assert call["data"] == b'{"encrypted":false,"content":{}}'
     assert call["headers"]["X-Signature"] == expect_signature(call)
+
+
+# ---------------------------------------------------------------------- #
+# 11. encrypt_request 开关与响应可观测性
+# ---------------------------------------------------------------------- #
+def test_encrypt_request_true_produces_encrypted_envelope():
+    tr, http = make(encrypt_request=True)
+    tr.request("POST", "/v1/market/secu/quote", json_body={"codes": ["usAAPL"]})
+    payload = json.loads(http.calls[0]["data"])
+    assert payload["encrypted"] is True
+
+
+def test_encrypt_request_false_produces_plain_envelope():
+    """明文模式用于服务端行为与 README 一致时的兼容/诊断。"""
+    tr, http = make(encrypt_request=False)
+    tr.request("POST", "/v1/market/secu/quote", json_body={"codes": ["usAAPL"]})
+    body = http.calls[0]["data"]
+    assert body == b'{"encrypted":false,"content":{"codes":["usAAPL"]}}'
+    assert tr.encrypt_request is False
+
+
+def test_last_status_and_encrypted_flag_are_recorded():
+    http = CapturingHttp([Resp(payload={"code": 0, "data": {}})])
+    tr, _ = make(http=http)
+    tr.request("GET", "/v1/market/secu/tick", params={"code": "usAAPL"})
+    assert tr.last_status == 200
+    assert tr.last_response_encrypted is False
+
+
+def test_401_carries_server_code_and_message():
+    """401 不能只给一句固定话术 —— 服务端 code/message 是排障唯一线索。"""
+    http = CapturingHttp([Resp(status_code=401,
+                               payload={"code": 40002,
+                                        "message": "Signature verification failed"})])
+    tr, _ = make(http=http, retry=ft.RetryPolicy(max_attempts=1))
+    with pytest.raises(proto.FosunAuthError) as ei:
+        tr.request("GET", "/v1/market/secu/tick", params={"code": "usAAPL"})
+    text = str(ei.value)
+    assert "40002" in text and "Signature verification failed" in text

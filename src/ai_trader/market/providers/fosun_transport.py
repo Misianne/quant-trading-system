@@ -134,7 +134,8 @@ class FosunHttpTransport:
                  clock: Callable[[], float] = time.monotonic,
                  sleeper: Callable[[float], None] = time.sleep,
                  lang: str = "zhCn",
-                 client_id: str = "fosunai-selfhosted"):
+                 client_id: str = "fosunai-selfhosted",
+                 encrypt_request: bool = True):
         self.base_url = str(base_url).rstrip("/")
         self.api_prefix = ("/" + api_prefix.strip("/")) if api_prefix else ""
         #: base_url 自带的路径前缀。官方把它一起签进 full_sign_path
@@ -146,6 +147,10 @@ class FosunHttpTransport:
         #: 客户端标识。官方用 "openapi-python-sdk"；本项目不冒充官方 SDK，
         #: 用自己的标识。该头**不参与签名**，不影响协议兼容性。
         self.client_id = str(client_id or "fosunai-selfhosted")
+        #: 是否对请求体加密。默认 True —— 复刻官方客户端的**实际行为**
+        #: （其 is_market_path 判定对 /api/v1/market/... 恒为假，行情 POST 也会加密）。
+        #: 置 False 时发送明文信封，用于服务端行为与 README 一致时的兼容/诊断。
+        self.encrypt_request = bool(encrypt_request)
         self._session_provider = session_provider
         self._api_key = api_key
         self.timeout = float(timeout)
@@ -159,6 +164,12 @@ class FosunHttpTransport:
         self.stats: Dict[str, int] = {"requests": 0, "retries": 0,
                                       "timeouts": 0, "throttled": 0,
                                       "permission_denied": 0}
+        #: 最近一次响应的 HTTP 状态码（None = 未收到响应）。
+        #: 单独记，是因为告警/报告需要"到底返回了 200 还是 403"，
+        #: 而异常路径上这个信息很容易丢。
+        self.last_status: Optional[int] = None
+        #: 最近一次响应是否走了 AES-GCM 解密分支
+        self.last_response_encrypted: bool = False
 
     # ------------------------------------------------------------------ #
     def _path(self, path: str) -> str:
@@ -217,7 +228,10 @@ class FosunHttpTransport:
         """
         is_market_path = (request_path == "/market/"
                           or "/optmarket/" in request_path)
-        is_encrypted = data is not None and not is_market_path
+        # 官方恒加密；``encrypt_request=False`` 是给"服务端行为与 README 一致"
+        # 的场景留的兼容/诊断开关，默认保持 True 以复刻官方。
+        is_encrypted = bool(data is not None and not is_market_path
+                            and self.encrypt_request)
 
         if is_encrypted:
             plaintext = self._dumps(data)
@@ -290,18 +304,21 @@ class FosunHttpTransport:
             # params 交给 requests 编码（与官方一致：签名用原始串，发送用编码串）。
             resp = self._http.request(method, url, data=body_bytes, params=params,
                                       headers=headers, timeout=self.timeout)
+            self.last_status = getattr(resp, "status_code", None)
         except requests.Timeout:
             self.stats["timeouts"] += 1
             raise
         except requests.RequestException:
             raise
 
-        if resp.status_code == 403:
-            self.stats["permission_denied"] += 1
-            raise proto.FosunPermissionError(
-                "403：行情权限未开通（请检查账户是否已开通对应行情服务）")
-        if resp.status_code == 401:
-            raise proto.FosunAuthError("401：会话或 API Key 无效")
+        if resp.status_code in (401, 403):
+            code, msg = _peek_error(resp)
+            if resp.status_code == 403:
+                self.stats["permission_denied"] += 1
+                raise proto.FosunPermissionError(
+                    f"403：{msg or '行情权限未开通'}" + (f"（code={code}）" if code else ""))
+            raise proto.FosunAuthError(
+                f"401：{msg or '会话或 API Key 无效'}" + (f"（code={code}）" if code else ""))
         if resp.status_code >= 500:
             raise proto.FosunUpstreamError(f"HTTP {resp.status_code}")
 
@@ -316,6 +333,8 @@ class FosunHttpTransport:
             raise proto.FosunProtocolError("响应不是 JSON") from None
 
         data: Any = payload
+        self.last_response_encrypted = bool(
+            isinstance(payload, dict) and payload.get("encrypted"))
         if isinstance(payload, dict) and "encrypted" in payload:
             if payload.get("encrypted"):
                 plain = proto.decrypt_body(
@@ -357,6 +376,26 @@ class FosunHttpTransport:
             self._http.close()
         except Exception:  # noqa: BLE001
             pass
+
+
+def _peek_error(resp) -> tuple:
+    """从失败响应里取 ``(业务码, 脱敏消息)``，消息截断到 120 字符。
+
+    401/403 光有一句固定话术没法排障；服务端通常会在 body 里给 code/message。
+    这里只取这两个字段，不落整包 body。
+    """
+    try:
+        body = resp.json()
+    except Exception:  # noqa: BLE001
+        return None, ""
+    if not isinstance(body, dict):
+        return None, ""
+    data = body.get("content") if "encrypted" in body else body
+    if not isinstance(data, dict):
+        return None, ""
+    code = data.get("code")
+    msg = str(data.get("message") or "")[:120]
+    return code, msg
 
 
 def _request_id() -> str:
