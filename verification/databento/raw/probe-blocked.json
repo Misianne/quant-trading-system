@@ -1,12 +1,15 @@
 {
   "tool": "databento_probe",
-  "at": "2026-11-17T04:49:49+00:00",
+  "version": "2.0",
+  "mode": "estimate-only",
+  "network_allowed": false,
+  "at": "2026-11-17T05:22:41+00:00",
   "dataset": "XNAS.ITCH",
   "schema": "status",
   "symbols": "AAPL",
   "start": "2026-11-16T14:30:00Z",
   "end": "2026-11-16T14:35:00Z",
   "max_cost_usd": 0.0,
-  "blocked": "NO_CREDENTIAL",
-  "detail": "环境变量 DATABENTO_API_KEY 未设置；本工具不会读取任何文件或命令行参数里的密钥"
+  "blocked": "UNKNOWN_COST",
+  "detail": "未提供 --price-book：本机没有可核实的 Databento 单价，拒绝猜测。可用 --price-book + --expected-gb 提供已验证价格"
 }

@@ -100,33 +100,35 @@ Databento 的额度只能在 Portal 里看，没有公开的余额查询接口�
 | 是否存在免费额度以外的扣费风险 | **UNVERIFIED**（额度耗尽后会走绑定的支付方式） |
 | 是否需要额外订阅或交易所授权 | 需要：`XNAS.ITCH` 属交易所直连数据集，通常另需 Nasdaq 授权 |
 
-### 2.2 已实现的费用门禁（结构上保证 0 美元）
+### 2.2 已实现的费用门禁（v2，三档分离）
 
-`tools/databento_probe.py` 把"先算钱、再取数"写死成不可跳过的四步：
+> **本节原先描述的是 v1 探针，已被 `DATABENTO_ZERO_COST_PROBE_AUDIT.md` 推翻并重写。**
+> v1 把 `metadata.get_cost` 称为"免费估价接口"——**免费指的是不产生数据费用，
+> 它仍然是一次需要凭据 + DNS + TCP + TLS 的 HTTPS 请求**。
+> 那是审计里的 B 类（向 Databento 查价），不是 A 类（本地计算）。
+> 在 v1 下根本无法做到"纯估价零网络"。
 
-```
-1. 读凭据（仅环境变量）        → 缺失则 exit 3
-2. metadata.get_cost（官方免费估价）→ 失败则 exit 4（算不出钱 = 不许取数）
-3. 成本 > --max-cost-usd（默认 0.0） → exit 5
-4. 未给 --confirm                → exit 6
-```
+v2 把三件事在参数层和代码层彻底分开：
 
-关键设计是默认上限 **0.0 美元**，而不是"先看看多少钱"：只有估价恰好为 0 的请求
-才可能放行。任何正数成本都会被拦，不需要人记得设预算。
+| 档位 | 模式 | 需要凭据 | 需要网络 | 请求历史数据 | exit |
+|---|---|---|---|---|---|
+| **A** | `--estimate-only`（默认） | 否 | **否** | 否 | 0 / 7 |
+| **B** | `--estimate-online` | 是 | 是 | 否 | 0 / 3 / 4 |
+| **C** | `--fetch` | 是 | 是 | **是** | 0 / 3 / 4 / 5 / 6 |
 
-已用 12 个离线用例把门禁本身测穿（`tests/test_databento_fee_gate.py`）：
+A 档的硬保证：不读 `DATABENTO_API_KEY`、不构造 `HttpClient`、`_http_get` 是死代码；
+只根据 `--price-book` 里**显式声明 `verified=true`** 的单价 + `--expected-gb` 估算；
+缺任一项返回 `UNKNOWN_COST`（exit 7）。本机没有可核实单价，所以 A 档默认结果就是 7。
 
-| 用例 | 期望 | 实际 |
-|---|---|---|
-| 无凭据 | exit 3，且**零网络请求** | PASS |
-| 缺 `--start/--end` | exit 2 | PASS |
-| 估价 0.42 USD + `--confirm` | exit 5，且未调用 `get_range` | PASS |
-| 估价 0.0000001 USD（默认上限 0） | exit 5 | PASS |
-| 估价 0.0 + `--confirm` | exit 0，落盘 + SHA256 | PASS |
-| 估价 0.0 但无 `--confirm` | exit 6，不取数 | PASS |
-| 估价响应非 JSON / 无 cost / cost 非数字 | 分别 exit 4 | PASS |
-| 密钥不出现在 stdout/stderr/产出文件 | 断言通过 | PASS |
-| `--api-key` 传参 | argparse 拒绝（exit 2） | PASS |
+C 档的三重授权：`--fetch`（明确要下载）+ `--max-cost-usd > 0`（默认 0=不允许花钱）
++ `--confirm`（二次确认）。上限另有硬顶 `HARD_CAP_USD = 25`，且**完全忽略环境变量**。
+
+v1 的一个真实漏洞已在本轮修掉：`--max-cost-usd nan` 会让 `cost > cap` 恒为 False，
+上限形同虚设；`inf` 同理。现在 `nan/inf/负数/超硬顶` 一律 exit 2。
+
+门禁测试从 12 项扩到 **37 项**（`tests/test_databento_fee_gate.py`），
+其中联网证明改用 **socket 层拦截**（`getaddrinfo`/`socket`/`create_connection`/
+`ssl.wrap_socket` 全部替换为计数+抛错），不再依赖"日志里没写"。
 
 ### 2.3 实际发生的扣款
 

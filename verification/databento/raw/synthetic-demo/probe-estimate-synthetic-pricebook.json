@@ -1,0 +1,21 @@
+{
+  "tool": "databento_probe",
+  "version": "2.0",
+  "mode": "estimate-only",
+  "network_allowed": false,
+  "at": "2026-11-17T05:21:04+00:00",
+  "dataset": "XNAS.ITCH",
+  "schema": "status",
+  "symbols": "AAPL",
+  "start": "2026-11-16T14:30:00Z",
+  "end": "2026-11-16T14:35:00Z",
+  "max_cost_usd": 0.0,
+  "network": false,
+  "estimated_cost_usd": 0.625,
+  "expected_gb": 0.05,
+  "unit_price_usd": 12.5,
+  "unit": "per_gb",
+  "price_source": "synthetic fixture for tests",
+  "credential": "not_read",
+  "network_calls": 0
+}

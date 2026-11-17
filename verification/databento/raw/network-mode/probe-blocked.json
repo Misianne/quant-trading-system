@@ -1,0 +1,15 @@
+{
+  "tool": "databento_probe",
+  "version": "2.0",
+  "mode": "estimate-online",
+  "network_allowed": true,
+  "at": "2026-11-17T05:22:43+00:00",
+  "dataset": "XNAS.ITCH",
+  "schema": "status",
+  "symbols": "AAPL",
+  "start": "2026-11-16T14:30:00Z",
+  "end": "2026-11-16T14:35:00Z",
+  "max_cost_usd": 0.0,
+  "blocked": "NO_CREDENTIAL",
+  "detail": "环境变量 DATABENTO_API_KEY 未设置；本工具不会读取任何文件或命令行参数里的密钥"
+}
