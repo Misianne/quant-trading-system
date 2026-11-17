@@ -434,3 +434,29 @@ def test_transport_rejects_undecryptable_body():
                                retry=RetryPolicy(max_attempts=1))
     with pytest.raises(proto.FosunProtocolError):
         tr.request("GET", "/p")
+
+
+def test_derive_session_keys_half_assignment_matches_official():
+    """官方：derived[:32] = **encryption**，derived[32:] = **MAC/signing**。
+
+    这个顺序错了不会在握手暴露（握手只验 ECDSA），只会在第一个业务请求
+    表现为 40002 签名失败。必须用独立计算钉住，而不是"两边一致就算过"。
+    """
+    from cryptography.hazmat.primitives import hashes as _h
+    from cryptography.hazmat.primitives.asymmetric import ec as _ec
+    from cryptography.hazmat.primitives.kdf.hkdf import HKDF as _HKDF
+
+    alice, alice_pub = proto.generate_ephemeral_keypair()
+    bob, bob_pub = proto.generate_ephemeral_keypair()
+    cn, sn = proto.new_nonce(), proto.new_nonce()
+
+    mac, enc = proto.derive_session_keys(alice, bob_pub, cn, sn)
+
+    # 独立复算：不调用被测函数
+    shared = alice.exchange(_ec.ECDH(), bob.public_key())
+    salt = base64.b64decode(cn) + base64.b64decode(sn)
+    material = _HKDF(algorithm=_h.SHA256(), length=64, salt=salt,
+                     info=b"session-derivation").derive(shared)
+
+    assert enc == material[:32], "前 32 字节应为加密密钥"
+    assert mac == material[32:], "后 32 字节应为签名(MAC)密钥"

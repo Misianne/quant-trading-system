@@ -192,7 +192,14 @@ def derive_session_keys(ephemeral_private_key, server_pub_b64: str,
     salt = base64.b64decode(client_nonce_b64) + base64.b64decode(server_nonce_b64)
     material = HKDF(algorithm=hashes.SHA256(), length=DERIVE_LEN,
                     salt=salt, info=HKDF_INFO).derive(shared)
-    return material[:32], material[32:]
+    # 官方 compute_shared_secret 的分配是：
+    #   enc_key = derived[:32]   ← **前** 32 字节
+    #   mac_key = derived[32:]   ← **后** 32 字节
+    #   返回 (mac_key, enc_key)，即 (signing, encryption)
+    # 早期实现返回了 (derived[:32], derived[32:])，把加密密钥当成了签名密钥。
+    # 这个错误握手阶段发现不了（握手只验 ECDSA，不碰派生密钥），
+    # 只会在第一个业务请求表现为 40002 签名验证失败。
+    return material[32:], material[:32]
 
 
 # ---------------------------------------------------------------------- #

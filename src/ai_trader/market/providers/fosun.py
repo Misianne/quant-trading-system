@@ -22,6 +22,9 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import urlparse
+from zoneinfo import ZoneInfo
+
+from ...broker.base import Quote
 
 from . import fosun_protocol as proto
 from .base import MarketDataProvider, ProviderCapabilities, ProviderError, ProviderNotConfigured, ProviderUnavailable
@@ -35,6 +38,13 @@ from .normalize import normalize_symbol
 
 #: 交易所以合成标识出现。任何把它当成真实交易所的映射都是错的。
 FOSUN_VENUE = "fosun"
+
+#: 官方 quote 的价格是**放大整数**。实测：3527800 ↔ 352.78（÷1e4）。
+#: 这个标度没有写在 SDK 文档里，是从真实响应反推并交叉验证得到的
+#: （chgVal=-34900 ↔ -3.49，pClose=3562700 ↔ 356.27，三者自洽）。
+QUOTE_PRICE_SCALE = 10_000.0
+#: 涨跌幅同理：-98 ↔ -0.98%（÷100）。
+QUOTE_PCT_SCALE = 100.0
 
 #: 允许的时间戳年份区间（防御明显错误的毫秒/微秒混用）。
 MIN_YEAR = 1990
@@ -151,9 +161,16 @@ class FosunQuoteSnapshot:
     low: float
     close: float
     receive_time: datetime
-    #: ``unknown`` = 协议未定义事件时间；``exchange`` = 有交易所时间
+    #: ``unknown`` = 协议未定义事件时间；``missing`` = 字段缺失；
+    #: ``vendor_quote_time`` = 官方给的报价时间（qtDate+qtTime，非交易所撮合时间）
     time_semantics: str = "unknown"
     event_time: Optional[datetime] = None
+    #: 昨收（真实响应里的 pClose）
+    prev_close: float = 0.0
+    #: 官方标记该报价是否为延迟行情（真实响应里的 delay）
+    delayed: bool = False
+    #: 官方交易状态码（tradeStatus）
+    trade_status: int = 0
     raw: Dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> Dict[str, Any]:
@@ -226,11 +243,74 @@ def parse_tick(raw: Dict[str, Any], *, symbol: str, receive_time: datetime,
     )
 
 
+def _quote_event_time(raw: Dict[str, Any]) -> Tuple[Optional[datetime], str]:
+    """把 ``qtDate``(YYYYMMDD) + ``qtTime``(HHMMSSmmm) 还原成 UTC。
+
+    时区依据：常规收盘 16:00:01、夜盘 03:42 都落在美东时间，因此按
+    ``America/New_York`` 解释。**这是官方报价时间，不是交易所撮合时间** ——
+    语义上必须与 exchange time 区分。
+    """
+    date_v, time_v = raw.get("qtDate"), raw.get("qtTime")
+    if date_v in (None, "", 0) or time_v in (None, "", 0):
+        return None, "missing"
+    try:
+        ds = str(int(date_v))
+        ts = f"{int(time_v):09d}"
+        if len(ds) != 8 or len(ts) != 9:
+            raise ValueError("bad length")
+        y, mo, d = int(ds[0:4]), int(ds[4:6]), int(ds[6:8])
+        hh, mi, se, ms = int(ts[0:2]), int(ts[2:4]), int(ts[4:6]), int(ts[6:9])
+        if not (MIN_YEAR <= y <= MAX_YEAR):
+            raise ValueError("bad year")
+        local = datetime(y, mo, d, hh, mi, se, ms * 1000,
+                         tzinfo=ZoneInfo("America/New_York"))
+        return local.astimezone(timezone.utc), "vendor_quote_time"
+    except (TypeError, ValueError):
+        raise FosunDataError("bad_time",
+                             f"quote 时间非法：qtDate={date_v!r} qtTime={time_v!r}") from None
+
+
+def _scaled(value: Any, *, field_name: str, allow_zero: bool = True) -> float:
+    """放大整数 → 实际价格（÷1e4）。"""
+    num = to_float(value, field_name=field_name, allow_zero=allow_zero)
+    return num / QUOTE_PRICE_SCALE
+
+
 def parse_quote(raw: Dict[str, Any], *, symbol: str,
                 receive_time: datetime) -> FosunQuoteSnapshot:
-    """报价快照。**不会**被转成事件。"""
+    """报价快照。**不会**被转成事件。
+
+    支持两种形状：
+
+    * **真实形状**（官方 quote 实际返回）：``price/pClose/open/high/low/vol``
+      为放大整数，另带 ``qtDate/qtTime/delay/tradeStatus``
+    * **简化形状**（早期样例/测试）：``last/bid/ask/volume/...`` 已是浮点
+
+    真实响应里**没有 bid/ask**，这两个字段恒为 0；不能拿 last 去冒充买一卖一。
+    """
     if not isinstance(raw, dict):
         raise FosunDataError("bad_payload", "quote 不是对象")
+
+    if "price" in raw and ("qtDate" in raw or "pClose" in raw):
+        event_time, semantics = _quote_event_time(raw)
+        return FosunQuoteSnapshot(
+            symbol=normalize_symbol(symbol) or str(symbol).upper(),
+            last=_scaled(raw.get("price"), field_name="price", allow_zero=False),
+            bid=0.0, ask=0.0,               # 官方快照不含盘口
+            volume=to_float(raw.get("vol"), field_name="volume"),
+            open=_scaled(raw.get("open"), field_name="price"),
+            high=_scaled(raw.get("high"), field_name="price"),
+            low=_scaled(raw.get("low"), field_name="price"),
+            close=_scaled(raw.get("latestClose", raw.get("pClose")), field_name="price"),
+            prev_close=_scaled(raw.get("pClose"), field_name="price"),
+            receive_time=receive_time,
+            time_semantics=semantics,
+            event_time=event_time,
+            delayed=bool(raw.get("delay", False)),
+            trade_status=int(raw.get("tradeStatus") or 0),
+            raw=dict(raw),
+        )
+
     return FosunQuoteSnapshot(
         symbol=normalize_symbol(symbol) or str(symbol).upper(),
         last=to_float(raw.get("last"), field_name="price", allow_zero=True),
@@ -293,6 +373,28 @@ def parse_kline_row(row: Sequence[Any], *, symbol: str) -> FosunKlineBar:
         close=to_float(row[4], field_name="price"),
         volume=to_float(row[5], field_name="volume"),
     )
+
+
+def _first_quote_row(data: Any, wire: str, symbol: str) -> Optional[Dict[str, Any]]:
+    """从 quote 响应里取出该标的的行。
+
+    官方实际返回的是**数组**（``[{...}]``），早期样例是 ``{code: {...}}`` 字典。
+    两种都认；认不出返回 None，由调用方 fail-closed（绝不返回空壳 Quote）。
+    """
+    if isinstance(data, list):
+        for row in data:
+            if not isinstance(row, dict):
+                continue
+            raw = str(row.get("rawSymbol") or "").upper()
+            if raw and raw == str(symbol).upper():
+                return row
+        return next((r for r in data if isinstance(r, dict)), None)
+    if isinstance(data, dict):
+        for key in (wire, symbol, str(symbol).upper()):
+            if isinstance(data.get(key), dict):
+                return data[key]
+        return next((v for v in data.values() if isinstance(v, dict)), None)
+    return None
 
 
 # ---------------------------------------------------------------------- #
@@ -542,10 +644,26 @@ class FosunProvider(MarketDataProvider):
         data = self._transport.request(
             "POST", "/v1/market/secu/quote",
             json_body={"codes": [wire_code(symbol, self.prefix)]})
-        row = (data or {}).get(wire_code(symbol, self.prefix)) or (data or {}).get(symbol)
-        if not isinstance(row, dict):
+        row = _first_quote_row(data, wire_code(symbol, self.prefix), symbol)
+        if row is None:
             raise ProviderUnavailable("报价响应缺少该代码的数据")
         return parse_quote(row, symbol=symbol, receive_time=self._clock())
+
+    # ------------------------------------------------------------------ #
+    def quote(self, symbol: str) -> Quote:
+        """给 QuoteGateway 用的 ``broker.base.Quote``。
+
+        这是本项目**唯一**允许把官方 quote 快照送进网关的入口。
+        时间戳取官方 ``qtDate+qtTime``（语义 = 供应商报价时间，不是交易所撮合时间），
+        因此网关的时段判定会按该时刻计算——快照过期时会被正常拒绝。
+        """
+        snap = self.snapshot_quote(symbol)
+        return Quote(
+            symbol=snap.symbol, market=self.config.get("market", "us"),
+            last=snap.last, open=snap.open, high=snap.high, low=snap.low,
+            prev_close=snap.prev_close, volume=snap.volume,
+            ts=snap.event_time.isoformat() if snap.event_time else "",
+            source="fosun")
 
     def snapshot_orderbook(self, symbol: str, count: int = 5) -> FosunOrderBookSnapshot:
         if self._transport is None:
