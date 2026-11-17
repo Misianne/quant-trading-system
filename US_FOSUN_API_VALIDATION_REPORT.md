@@ -1,7 +1,7 @@
 # 复星 OpenAPI 真实调用验证报告
 
 - 项目：`C:\FosunAI-Trading`
-- 代码提交：`a6cda18`（协议/传输/Provider）
+- 代码提交：`a6cda18`（协议/传输/Provider）、`e0e8f24`（SIT 护栏）
 - 验证日期：2026-11-17
 - **真实 API 请求次数：0**
 - **结论：BLOCKED —— 本机没有任何凭据**

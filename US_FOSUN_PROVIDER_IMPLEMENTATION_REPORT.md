@@ -2,7 +2,7 @@
 
 - 项目：`C:\FosunAI-Trading`
 - 起始基线：`2622325`（工作树干净）
-- 本轮代码提交：`a6cda18`
+- 本轮代码提交：`a6cda18`（实现）、`e0e8f24`（SIT 端点护栏）
 - 全量测试：**1409 passed / 0 failed / 0 errors / 1 skipped**（`r14.xml`）
 - 本轮新增测试：**89**（协议/传输 27、Provider 51、风控门禁 11）
 - 真实 API 请求：**0 次**（本机无凭据，见 `US_FOSUN_API_VALIDATION_REPORT.md`）

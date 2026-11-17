@@ -1,7 +1,7 @@
 # 风控门禁回归报告（复星行情接入）
 
 - 项目：`C:\FosunAI-Trading`
-- 代码提交：`a6cda18`
+- 代码提交：`a6cda18` / `e0e8f24`
 - 全量测试：**1409 passed / 0 failed / 0 errors / 1 skipped**（`r14.xml`）
 - 本报告的证据全部来自可重跑的测试用例，不是人工判断
 
