@@ -10,6 +10,10 @@ from .authority import (AuthorityRouter, AuthorityVerdict, EventSignatureVerifie
 from .base import (MarketDataProvider, ProviderCapabilities, ProviderError,
                    ProviderNotConfigured, ProviderUnavailable)
 from .feed import FeedUnavailable, ProviderFeed, SymbolState
+from .fosun import (FOSUN_VENUE, FosunDataError, FosunKlineBar,
+                    FosunOrderBookSnapshot, FosunProvider,
+                    FosunQuoteSnapshot, parse_kline_row, parse_orderbook,
+                    parse_quote, parse_tick)
 from .models import (BLOCKING_FLAGS, DataQuality, EventAuthority, EventType,
                      HaltEvent, LULDState, MWCBState, MarketEvent,
                      OrderBookEvent, ProviderHealth, QualityFlag, QuoteEvent,
@@ -27,6 +31,9 @@ __all__ = [
     "BLOCKING_FLAGS", "DataQuality", "EventAuthority", "EventType", "HaltEvent",
     "LULDState", "MWCBState", "MarketEvent", "OrderBookEvent", "ProviderHealth",
     "QualityFlag", "QuoteEvent", "SessionEvent", "SessionPhase", "TradeEvent",
+    "FOSUN_VENUE", "FosunDataError", "FosunKlineBar",
+    "FosunOrderBookSnapshot", "FosunProvider", "FosunQuoteSnapshot",
+    "parse_kline_row", "parse_orderbook", "parse_quote", "parse_tick",
     "normalize_exchange", "normalize_symbol", "parse_timestamp",
     "session_phase_of", "to_market_time",
 ]
