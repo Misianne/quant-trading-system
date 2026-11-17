@@ -222,10 +222,17 @@ def test_missing_expected_gb_is_unknown_cost(tmp_path, monkeypatch):
 # 7/8. 费用上限
 # ---------------------------------------------------------------------- #
 class FakeClient:
-    """可控 HttpClient：记录调用，按 URL 返回估价或数据。"""
+    """可控 HttpClient：记录调用，按 URL 返回估价或数据。
+
+    ``cost_payload`` / ``range_payload`` 非 None 时直接返回原始字节，
+    用于验证"响应畸形"这类错误路径（这部分在上一版就有用例，
+    重写时不能丢）。
+    """
 
     instances = []
     next_cost = 0.0
+    cost_payload = None
+    range_payload = None
 
     def __init__(self, key, *, allowed=None, timeout=30.0):
         enabled = probe.network_enabled() if allowed is None else bool(allowed)
@@ -240,10 +247,14 @@ class FakeClient:
         if "metadata.get_cost" in url:
             self.requests += 1
             self.urls.append(url)
+            if FakeClient.cost_payload is not None:
+                return FakeClient.cost_payload
             return json.dumps({"cost": FakeClient.next_cost}).encode()
         if "timeseries.get_range" in url:
             self.requests += 1
             self.urls.append(url)
+            if FakeClient.range_payload is not None:
+                return FakeClient.range_payload
             return b'{"rtype":18}\n'
         raise AssertionError(url)
 
@@ -252,6 +263,8 @@ class FakeClient:
 def fake_client(monkeypatch):
     FakeClient.instances = []
     FakeClient.next_cost = 0.0
+    FakeClient.cost_payload = None
+    FakeClient.range_payload = None
     monkeypatch.setattr(probe, "HttpClient", FakeClient)
     monkeypatch.setenv(probe.KEY_ENV, SECRET)
     return FakeClient
@@ -288,6 +301,40 @@ def test_fetch_succeeds_within_cap(tmp_path, fake_client):
     cli = fake_client.instances[0]
     assert sum("get_range" in u for u in cli.urls) == 1
     assert list(tmp_path.glob("*.jsonl"))
+
+
+@pytest.mark.parametrize("payload,code", [
+    (b"<html>oops</html>", "COST_UNPARSEABLE"),
+    (json.dumps({"result": "ok"}).encode(), "COST_MISSING"),
+    (json.dumps({"cost": "cheap"}).encode(), "COST_NOT_NUMERIC"),
+    (json.dumps({"cost": 1e999}).encode(), "COST_NOT_FINITE"),
+])
+def test_malformed_cost_response_blocks(tmp_path, fake_client, capsys, payload, code):
+    """估价响应畸形时必须拒绝，不能当成 0 元放行。"""
+    fake_client.cost_payload = payload
+    rc = probe.main(["--fetch", "--confirm", "--max-cost-usd", "1",
+                     *RANGE, "--out", str(tmp_path)])
+    assert rc == 4
+    out = capsys.readouterr().out
+    assert code in out
+    assert not any("get_range" in u for u in fake_client.instances[0].urls)
+
+
+def test_fetch_writes_raw_and_digest(tmp_path, fake_client):
+    """取数后必须留下可校验的原始字节与 SHA256。"""
+    import hashlib
+    payload = b'{"rtype":18,"action":8}\n{"rtype":0,"price":1}\n'
+    fake_client.next_cost = 0.0
+    fake_client.range_payload = payload
+    rc = probe.main(["--fetch", "--confirm", "--max-cost-usd", "0.01",
+                     *RANGE, "--out", str(tmp_path)])
+    assert rc == 0
+    files = list(Path(tmp_path).glob("*.jsonl"))
+    assert len(files) == 1 and files[0].read_bytes() == payload
+    meta = json.loads(next(Path(tmp_path).glob("*.meta.json")).read_text(encoding="utf-8"))
+    assert meta["sha256"] == hashlib.sha256(payload).hexdigest()
+    assert meta["rows"] == 2
+    assert meta["field_presence"]["rtype"] == 2
 
 
 def test_nan_cap_cannot_bypass(tmp_path, fake_client):
