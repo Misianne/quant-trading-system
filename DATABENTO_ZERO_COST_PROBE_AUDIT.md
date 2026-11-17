@@ -2,7 +2,7 @@
 
 - 项目：`C:\FosunAI-Trading`
 - 基线 commit：`b186aea`
-- 本轮 commit：`0e4c3b4`（代码+测试）/ 报告提交见文末
+- 本轮 commit：`0e4c3b4`（探针重写）、`737f88e`（测试补全）、本报告另提交
 - 审计对象：`tools/databento_probe.py`（唯一对象）
 - 生成时间：2026-11-17
 
@@ -272,7 +272,7 @@ verification/databento/raw/network-mode/probe-blocked.json
 
 ## 7. 费用门禁测试
 
-`tests/test_databento_fee_gate.py` 从 12 项扩到 **37 项**。
+`tests/test_databento_fee_gate.py` 从 12 项扩到 **42 项**。
 
 | 要求 | 对应用例 | 结果 |
 |---|---|---|
@@ -294,13 +294,29 @@ verification/databento/raw/network-mode/probe-blocked.json
 ### 7.1 全量回归
 
 ```
-1315 passed / 0 failed / 0 errors / 1 skipped   (r13.xml, 168.8 s)
-上一轮 1290 → +25
+1320 passed / 0 failed / 0 errors / 1 skipped   (r13.xml, 168.5 s)
+上一轮 1290 → +30
 ```
 
-`+25` 全部来自费用门禁用例的扩充（12 → 37）。
+`+30` 全部来自费用门禁用例的扩充（12 → 42）。
 
-### 7.2 本轮抓到的自身缺陷
+### 7.2 重写时曾丢掉 3 条错误路径用例（已补回）
+
+第一版 v2 测试写完后我核对了一遍"旧用例是否都有对应"，发现有 3 条被漏掉：
+
+| 旧用例 | 遗漏原因 | 现状 |
+|---|---|---|
+| 估价响应不是 JSON | 新 FakeClient 只会返回合法 JSON | 已补，参数化为 4 种畸形响应 |
+| 响应里没有 `cost` 字段 | 同上 | 已补 |
+| `cost` 不是数字 | 同上 | 已补（另加 `inf` → `COST_NOT_FINITE`） |
+
+同时 `fetch` 写盘用例的断言被削弱成"文件存在"，丢掉了 SHA256 校验。
+已恢复为：字节完全一致 + `sha256` 匹配 + `rows` + `field_presence` 计数。
+
+这类"重写顺便丢测试"是最难自查的——因为测试数从 12 涨到 37，
+总数看起来是增加的，只有逐条比对旧用例才看得出缺口。
+
+### 7.3 本轮抓到的自身缺陷
 
 写测试时发现自己 v2 初稿也有一个问题：**`HttpClient` 在上限检查之前就被构造**。
 `--fetch --max-cost-usd 0` 时会先建客户端再拒绝——虽然不会联网，
@@ -384,7 +400,7 @@ python tools/databento_probe.py --fetch --confirm `
 | 文件 | 变化 |
 |---|---|
 | `tools/databento_probe.py` | 重写为三档（218 → 531 行） |
-| `tests/test_databento_fee_gate.py` | 12 → 37 项，socket 拦截 |
+| `tests/test_databento_fee_gate.py` | 12 → 42 项，socket 拦截 |
 | `verification/databento/raw/probe-blocked.json` | A 档 UNKNOWN_COST 证据 |
 | `verification/databento/raw/network-mode/probe-blocked.json` | B 档 NO_CREDENTIAL 证据 |
 | `verification/databento/raw/synthetic-demo/…` | 合成价格书演示（明确隔离标注） |
