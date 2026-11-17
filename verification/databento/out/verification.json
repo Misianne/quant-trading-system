@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-11-17T04:50:38+00:00",
+  "generated_at": "2026-11-17T04:58:21+00:00",
   "git": {
-    "head": "6e0c4ef",
+    "head": "143ff1c",
     "branch": "master",
-    "dirty": true
+    "dirty": false
   },
   "credential": {
     "env_var": "DATABENTO_API_KEY",
