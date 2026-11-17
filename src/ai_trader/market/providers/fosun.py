@@ -21,6 +21,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from urllib.parse import urlparse
 
 from . import fosun_protocol as proto
 from .base import MarketDataProvider, ProviderCapabilities, ProviderError, ProviderNotConfigured, ProviderUnavailable
@@ -377,6 +378,15 @@ class FosunProvider(MarketDataProvider):
         api_key = os.environ.get("FSOPENAPI_API_KEY", "").strip()
         priv_pem = os.environ.get("FSOPENAPI_CLIENT_PRIVATE_KEY", "").strip()
         pub_pem = os.environ.get("FSOPENAPI_SERVER_PUBLIC_KEY", "").strip()
+        # 先拦截"连到测试环境"这件事。文档示例里的默认值是 openapi-sit，
+        # 照抄会把测试行情当成真实行情 —— 这比报错危险得多。
+        host = urlparse(base_url).hostname or ""
+        if "sit" in host.lower() and not self.config.get("allow_test_endpoint", False):
+            raise ProviderNotConfigured(
+                f"base_url 指向测试环境（{host}）：测试行情不代表真实市场。"
+                f"请改用开放平台下发的生产地址；确需测试请显式设置 "
+                f"allow_test_endpoint=True")
+
         missing = [name for name, val in (
             ("FSOPENAPI_BASE_URL", base_url), ("FSOPENAPI_API_KEY", api_key),
             ("FSOPENAPI_CLIENT_PRIVATE_KEY", priv_pem),

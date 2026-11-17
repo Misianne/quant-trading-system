@@ -306,3 +306,42 @@ def test_provider_never_emits_halt_events():
     p = make_provider([{"ticks": [tick()]}])
     assert not any(isinstance(e, HaltEvent) for e in p.poll())
     assert not hasattr(p, "halt_symbol")
+
+
+# ---------------------------------------------------------------------- #
+# 端点防误连
+# ---------------------------------------------------------------------- #
+def _pem_pair():
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    priv = ec.generate_private_key(ec.SECP384R1())
+    priv_pem = priv.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption()).decode()
+    pub_pem = priv.public_key().public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo).decode()
+    return priv_pem, pub_pem
+
+
+def test_sit_endpoint_is_rejected(monkeypatch):
+    priv, pub = _pem_pair()
+    monkeypatch.setenv("FSOPENAPI_BASE_URL", "https://openapi-sit.example.com")
+    monkeypatch.setenv("FSOPENAPI_API_KEY", "dummy")
+    monkeypatch.setenv("FSOPENAPI_CLIENT_PRIVATE_KEY", priv)
+    monkeypatch.setenv("FSOPENAPI_SERVER_PUBLIC_KEY", pub)
+    p = F.FosunProvider({})
+    with pytest.raises(Exception) as ei:
+        p._build_transport_from_env()
+    assert "测试环境" in str(ei.value)
+
+
+def test_sit_can_be_allowed_explicitly(monkeypatch):
+    priv, pub = _pem_pair()
+    monkeypatch.setenv("FSOPENAPI_BASE_URL", "https://openapi-sit.example.com")
+    monkeypatch.setenv("FSOPENAPI_API_KEY", "dummy")
+    monkeypatch.setenv("FSOPENAPI_CLIENT_PRIVATE_KEY", priv)
+    monkeypatch.setenv("FSOPENAPI_SERVER_PUBLIC_KEY", pub)
+    tr = F.FosunProvider({"allow_test_endpoint": True})._build_transport_from_env()
+    assert tr is not None
