@@ -337,10 +337,16 @@ def test_transport_signs_and_unwraps_data():
     data = tr.request("GET", "/v1/market/secu/tick", params={"code": "usAAPL"})
     assert data == {"ticks": []}
     method, url, kwargs = http.calls[0]
-    assert method == "GET" and "code=usAAPL" in url
+    assert method == "GET"
+    assert url == "https://example.invalid/api/v1/market/secu/tick"
+    # 官方把 params 交给 requests 编码，而不是自己拼进 URL —— 保持一致
+    assert kwargs["params"] == {"code": "usAAPL"}
+    # GET 也必须带官方信封 body（这是审计 F2 的核心）
+    assert kwargs["data"] == b'{"encrypted":false,"content":{}}'
     assert kwargs["timeout"] == tr.timeout
     assert kwargs["headers"]["X-Signature"], "必须带签名头"
     assert "X-API-Key" in kwargs["headers"]
+    assert kwargs["headers"]["X-Lang"] == "zhCn"
 
 
 def test_transport_retries_upstream_5xx_then_succeeds():

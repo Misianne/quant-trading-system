@@ -398,14 +398,23 @@ class FosunProvider(MarketDataProvider):
 
         holder = _SessionHolder(base_url, api_key, priv_pem, pub_pem,
                                 timeout=float(self.config.get("timeout", 3.0)),
-                                clock=self._clock)
+                                clock=self._clock,
+                                lang=str(self.config.get("lang", "zhCn")),
+                                client_source=str(self.config.get(
+                                    "client_source", "python-sdk")),
+                                client_product=str(self.config.get(
+                                    "client_product", "sdk")),
+                                client_id=str(self.config.get(
+                                    "client_id", "fosunai-selfhosted")))
         self._session_provider = holder.get
         return FosunHttpTransport(
             base_url, api_prefix=str(self.config.get("api_prefix", "/api")),
             session_provider=holder.get, api_key=api_key,
             timeout=float(self.config.get("timeout", 3.0)),
             rate_per_sec=float(self.config.get("rate_per_sec", 2.0)),
-            burst=int(self.config.get("burst", 4)))
+            burst=int(self.config.get("burst", 4)),
+            lang=str(self.config.get("lang", "zhCn")),
+            client_id=str(self.config.get("client_id", "fosunai-selfhosted")))
 
     def _close(self) -> None:
         if self._transport is not None and hasattr(self._transport, "close"):
@@ -527,9 +536,12 @@ class FosunProvider(MarketDataProvider):
         """取报价快照。**仅供展示/审计**，不得用于行情门禁。"""
         if self._transport is None:
             raise ProviderUnavailable("传输未初始化")
+        # 官方是 POST + JSON body，且 codes 是**数组**：
+        #   client.post("/v1/market/secu/quote", data={"codes": list(codes)})
+        # 用 GET + query 会同时错在方法、参数位置与值类型三处。
         data = self._transport.request(
-            "GET", "/v1/market/secu/quote",
-            params={"codes": wire_code(symbol, self.prefix)})
+            "POST", "/v1/market/secu/quote",
+            json_body={"codes": [wire_code(symbol, self.prefix)]})
         row = (data or {}).get(wire_code(symbol, self.prefix)) or (data or {}).get(symbol)
         if not isinstance(row, dict):
             raise ProviderUnavailable("报价响应缺少该代码的数据")
@@ -557,13 +569,24 @@ class _SessionHolder:
 
     def __init__(self, base_url: str, api_key: str, private_pem: str,
                  server_pem: str, *, timeout: float = 3.0,
-                 clock: Callable[[], datetime] = None):
+                 clock: Callable[[], datetime] = None,
+                 lang: str = "zhCn",
+                 client_source: str = "python-sdk",
+                 client_product: str = "sdk",
+                 client_id: str = "fosunai-selfhosted"):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self._identity = proto.load_private_key_pem(private_pem)
         self._server_pub = proto.load_public_key_pem(server_pem)
         self.timeout = float(timeout)
         self._clock = clock or (lambda: datetime.now(timezone.utc))
+        self.lang = str(lang or "zhCn")
+        # X-source / X-product 是协议常量（官方固定 python-sdk / sdk）。
+        # 它们不参与签名、不承担认证；填官方值是为了让网关按已知客户端类型处理。
+        # X-Request-Client 保留本项目真实标识，不冒充官方 SDK。
+        self.client_source = str(client_source or "python-sdk")
+        self.client_product = str(client_product or "sdk")
+        self.client_id = str(client_id or "fosunai-selfhosted")
         self._session: Optional[proto.FosunSession] = None
 
     def get(self) -> proto.FosunSession:
@@ -580,11 +603,20 @@ class _SessionHolder:
         signature = proto.sign_handshake(self._identity, eph_pub, nonce)
 
         url = f"{self.base_url}/api/v1/auth/SessionCreate"
-        headers = {"Content-Type": "application/json", "Accept": "application/json",
-                   "X-API-Key": self.api_key, "X-Nonce": nonce,
-                   "X-Timestamp": str(int(time.time() * 1000)),
-                   "X-Signature": signature,
-                   "X-Request-Client": "fosunai-selfhosted"}
+        # 逐项对齐官方 auth.py::create_session 的握手头。
+        # 注意官方握手用的是 **X-timestamp**（小写 t），业务请求用 X-Timestamp；
+        # HTTP 头本应大小写不敏感，但这里照抄以免踩到大小写敏感的中间件。
+        headers = {"X-Lang": self.lang,
+                   "Content-Type": "application/json",
+                   "Accept": "application/json",
+                   "X-API-Key": self.api_key,
+                   "X-Request-Id": str(__import__("uuid").uuid4()),
+                   "X-Request-Client": self.client_id,
+                   "X-timestamp": str(int(time.time() * 1000)),
+                   "X-source": self.client_source,
+                   "X-product": self.client_product,
+                   "X-Nonce": nonce,
+                   "X-Signature": signature}
         try:
             resp = _rq.post(url, json={"apiKey": self.api_key,
                                        "clientTempPublicKey": eph_pub},

@@ -31,7 +31,6 @@ import hmac
 import os
 from dataclasses import dataclass
 from typing import Optional, Tuple
-from urllib.parse import quote, urlencode
 
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -202,14 +201,18 @@ def derive_session_keys(ephemeral_private_key, server_pub_b64: str,
 def canonical_query(params: Optional[dict]) -> str:
     """构造参与签名的查询串。
 
-    排序 + RFC3986 编码。当前协议参数都是纯 ASCII 代码或整数，编码前后
-    完全一致；将来若出现需要转义的取值，**发送与签名必须使用同一个串**，
-    否则会出现"签名对但服务端算出来不一样"的诡异问题。
+    官方是**原始拼接、不做 URL 编码**：
+
+        "&".join(f"{k}={params[k]}" for k in sorted(params.keys()))
+
+    我们照做。注意官方随后把 ``params`` 交给 requests 去编码发送，
+    也就是说"签名的串"与"发送的串"在需要转义时会不同 —— 这是官方的既有行为，
+    兼容实现必须复刻，不能单方面"修正"。
+    当前协议参数都是 ASCII 代码或整数，两者字节相同。
     """
     if not params:
         return ""
-    items = sorted((str(k), str(v)) for k, v in params.items())
-    return urlencode(items, quote_via=quote)
+    return "&".join(f"{k}={params[k]}" for k in sorted(params.keys()))
 
 
 def body_sha256_hex(body: Optional[bytes]) -> str:

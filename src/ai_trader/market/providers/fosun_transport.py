@@ -18,8 +18,10 @@ import json
 import math
 import threading
 import time
+import uuid
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from urllib.parse import urlparse
 
 import requests
 
@@ -130,9 +132,20 @@ class FosunHttpTransport:
                  retry: RetryPolicy = RetryPolicy(),
                  http_session: Optional[requests.Session] = None,
                  clock: Callable[[], float] = time.monotonic,
-                 sleeper: Callable[[float], None] = time.sleep):
+                 sleeper: Callable[[float], None] = time.sleep,
+                 lang: str = "zhCn",
+                 client_id: str = "fosunai-selfhosted"):
         self.base_url = str(base_url).rstrip("/")
         self.api_prefix = ("/" + api_prefix.strip("/")) if api_prefix else ""
+        #: base_url 自带的路径前缀。官方把它一起签进 full_sign_path
+        #: （`base_path = urlparse(base_url).path.rstrip('/')`）。
+        #: 少了它，只要网关部署在子路径下，签名就必然对不上。
+        self._base_path = urlparse(self.base_url).path.rstrip("/")
+        #: 官方每个请求都带 X-Lang，默认 zhCn。
+        self.lang = str(lang or "zhCn")
+        #: 客户端标识。官方用 "openapi-python-sdk"；本项目不冒充官方 SDK，
+        #: 用自己的标识。该头**不参与签名**，不影响协议兼容性。
+        self.client_id = str(client_id or "fosunai-selfhosted")
         self._session_provider = session_provider
         self._api_key = api_key
         self.timeout = float(timeout)
@@ -149,21 +162,75 @@ class FosunHttpTransport:
 
     # ------------------------------------------------------------------ #
     def _path(self, path: str) -> str:
+        """请求路径（用于拼 URL）：``api_prefix + path``。"""
         return f"{self.api_prefix}{path if path.startswith('/') else '/' + path}"
+
+    def _sign_path(self, request_path: str) -> str:
+        """参与签名的完整路径：``base_path + request_path``。
+
+        与官方 ``full_sign_path = f"{self.base_path}{request_path}"`` 对齐。
+        """
+        return f"{self._base_path}{request_path}"
 
     def _headers(self, session: proto.FosunSession, ts: str, nonce: str,
                  signature: str, request_id: str) -> Dict[str, str]:
+        """业务请求头，逐项对齐官方 ``client.py::_request``。
+
+        官方业务请求**不含** ``X-source`` / ``X-product``（那两个只在握手时发），
+        也不含 ``Accept``。这里同样不发，避免"多一个头"造成字节级差异。
+        """
         return {
+            "X-Lang": self.lang,
             "Content-Type": "application/json",
-            "Accept": "application/json",
             "X-API-Key": self._api_key,
             "X-session": session.session_id,
             "X-Request-Id": request_id,
-            "X-Request-Client": "fosunai-selfhosted",
+            "X-Request-Client": self.client_id,
             "X-Timestamp": ts,
             "X-Nonce": nonce,
             "X-Signature": signature,
         }
+
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _dumps(obj: Any) -> bytes:
+        """官方序列化规则：紧凑分隔符，**不关闭** ensure_ascii。
+
+        ``json.dumps(obj, separators=(',', ':'))`` 默认 ``ensure_ascii=True``，
+        非 ASCII 会被转义成 ``\\uXXXX``。要字节级一致就必须保持默认，
+        不能图省事加 ``ensure_ascii=False``。
+        """
+        return json.dumps(obj, separators=(",", ":")).encode("utf-8")
+
+    def _build_body(self, session: proto.FosunSession, request_path: str,
+                    data: Optional[dict], ts: str, nonce: str) -> bytes:
+        """构造最终发送的 body 字节（官方信封规则）。
+
+        官方原文：
+            is_market_path = request_path == "/market/" or "/optmarket/" in request_path
+            is_encrypted = data is not None and not is_market_path
+            req_payload = {"encrypted": False, "content": data if data is not None else {}}
+
+        注意 ``request_path == "/market/"`` 对 ``/api/v1/market/...`` **永远为假**
+        （见独立审计 §3.4），因此行情 POST 实际会被加密。我们按**实际行为**
+        复现，而不是按 README 的描述。
+        """
+        is_market_path = (request_path == "/market/"
+                          or "/optmarket/" in request_path)
+        is_encrypted = data is not None and not is_market_path
+
+        if is_encrypted:
+            plaintext = self._dumps(data)
+            aad = proto.build_aad(session.session_id, ts, nonce)
+            iv_b64, ct_b64, tag_b64 = proto.encrypt_body(
+                session.encryption_key, plaintext, aad)
+            payload = {"encrypted": True, "iv": iv_b64,
+                       "tag": tag_b64, "content": ct_b64}
+        else:
+            payload = {"encrypted": False,
+                       "content": data if data is not None else {}}
+
+        return self._dumps(payload)
 
     # ------------------------------------------------------------------ #
     def request(self, method: str, path: str, *,
@@ -199,26 +266,29 @@ class FosunHttpTransport:
     def _attempt(self, method: str, path: str, params: Optional[dict],
                  json_body: Optional[dict]) -> Dict[str, Any]:
         session = self._session_provider()
-        full_path = self._path(path)
+        request_path = self._path(path)
+        sign_path = self._sign_path(request_path)
         query = proto.canonical_query(params)
-        body_bytes = (json.dumps(json_body, separators=(",", ":"), ensure_ascii=False)
-                      .encode("utf-8")) if json_body is not None else None
 
-        # 签名时间戳必须用**墙钟**（服务端要校验），不能用单调时钟。
-        # self._clock 只用于本地限流与超时，两者不能混。
+        # 签名时间戳必须是**墙钟**（服务端要校验），不能与限流用的单调时钟混用。
         ts = str(int(time.time() * 1000))
-        nonce = proto.new_nonce()
-        signature = proto.sign_request(session.signing_key, method, full_path,
-                                      query, ts, nonce, body_bytes)
-        headers = self._headers(session, ts, nonce, signature, _request_id())
+        # 官方 nonce = str(uuid.uuid4().hex)（32 位十六进制）。
+        nonce = uuid.uuid4().hex
 
-        url = f"{self.base_url}{full_path}"
-        if query:
-            url = f"{url}?{query}"
+        # 先定 ts/nonce，再加密（AAD 依赖它们），最后对**最终 body 字节**签名。
+        # 顺序错了会签到一个与实际发送不同的 body 上。
+        body_bytes = self._build_body(session, request_path, json_body, ts, nonce)
+
+        signature = proto.sign_request(session.signing_key, method, sign_path,
+                                      query, ts, nonce, body_bytes)
+        headers = self._headers(session, ts, nonce, signature, str(uuid.uuid4()))
+
+        url = f"{self.base_url}{request_path}"
 
         self.stats["requests"] += 1
         try:
-            resp = self._http.request(method, url, data=body_bytes,
+            # params 交给 requests 编码（与官方一致：签名用原始串，发送用编码串）。
+            resp = self._http.request(method, url, data=body_bytes, params=params,
                                       headers=headers, timeout=self.timeout)
         except requests.Timeout:
             self.stats["timeouts"] += 1
