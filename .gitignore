@@ -64,3 +64,6 @@ data/memprof*/
 data/memtrim*/
 data/paper_runs/
 data/collect.txt
+
+# ---- 本轮临时测试产物（JUnit XML / 部署暂存）----
+.tmp_test/

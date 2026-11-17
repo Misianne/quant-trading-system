@@ -904,11 +904,36 @@ class MarketFeed:
         return ""
 
     @staticmethod
+    def _code_set(value: Any) -> Set[str]:
+        """把 ``scode``/``fcode`` 这类代码集合字段归一化为小写集合。"""
+        if value is None:
+            return set()
+        if isinstance(value, str):
+            value = [value]
+        if not isinstance(value, (list, tuple, set)):
+            return set()
+        return {str(c).strip().lower() for c in value if str(c).strip()}
+
+    @staticmethod
     def _parse_subrep(rep: Any) -> Optional[Dict[str, Optional[Set[str]]]]:
         """把 ``subRep`` 归一化成 ``{topic: {已接受代码} | None}``。
 
+        F-WS-2（证据驱动修复）：官方 ``fsopenapi/api/proto/push.proto`` 定义
+        ``SubRepItem{string topic; repeated string scode; repeated string fcode;
+        repeated string invalid; repeated string denied;}`` —— 回执是
+        **按代码分类的成功/失败清单**，不是 ``{topic: [codes]}``。
+        旧实现只认后者，真实回执会被解析成 ``{topic: None}``，于是永远
+        ``ACK_UNVERIFIED``、生产永远进不了 ``SUBSCRIBED``（fail-closed 方向
+        安全，但功能上不可用）。
+
+        现在优先按官方结构解析，**只把 ``scode`` 当作"被接受"**，
+        并把同时出现在 ``fcode``/``invalid``/``denied`` 里的代码扣除；
+        旧结构（``{topic:[codes]}``、``{"items":[{topic,code}]}``）继续兼容，
+        以不破坏既有探针与测试。
+
         无法理解的结构返回 ``None``（调用方按"未确认"处理）。
         """
+        official_keys = ("scode", "fcode", "invalid", "denied")
         if isinstance(rep, str):
             s = rep.strip()
             if not s:
@@ -918,13 +943,22 @@ class MarketFeed:
             except ValueError:
                 return None
         if isinstance(rep, dict):
+            # 单个 SubRepItem：{"topic":"qt","scode":[...],...}
+            if any(k in rep for k in official_keys):
+                rep = [rep]
             # 形如 {"items":[{"topic":..,"code":[..]}]}
-            if isinstance(rep.get("items"), list):
+            elif isinstance(rep.get("items"), list):
                 rep = rep["items"]
             else:
                 out: Dict[str, Optional[Set[str]]] = {}
                 for topic, codes in rep.items():
                     if isinstance(codes, dict):
+                        if any(k in codes for k in official_keys):
+                            ok = MarketFeed._code_set(codes.get("scode"))
+                            for k in ("fcode", "invalid", "denied"):
+                                ok -= MarketFeed._code_set(codes.get(k))
+                            out[str(topic)] = ok
+                            continue
                         codes = codes.get("code") or codes.get("codes") or []
                     if isinstance(codes, str):
                         codes = [codes]
@@ -942,6 +976,15 @@ class MarketFeed:
                     continue
                 topic = node.get("topic")
                 if topic is None:
+                    continue
+                if any(k in node for k in official_keys):
+                    # 官方结构：明确列出成功/失败/无效/无权限代码。
+                    # 结构完整 → 一律返回集合（空集合表示"一个都没接受"，
+                    # 由调用方按"缺代码"fail-closed），不再退化成 None。
+                    ok = MarketFeed._code_set(node.get("scode"))
+                    for k in ("fcode", "invalid", "denied"):
+                        ok -= MarketFeed._code_set(node.get(k))
+                    out2[str(topic)] = ok
                     continue
                 codes = node.get("code") or node.get("codes") or []
                 if isinstance(codes, str):
@@ -1053,8 +1096,18 @@ class MarketFeed:
 
     async def _subscribe_and_confirm(self, ws) -> None:
         """发送订阅并在收到**服务端确认**后才返回。"""
-        codes = [str(c).lower() for c in self.cfg.codes]
-        if not codes:
+        # F-WS-1（证据驱动修复）：线上代码**保持调用方给出的大小写**。
+        # 官方 ``example/push_example.py`` 订阅的是 ``subscribeQuote([...])`` /
+        # ``subscribePretMarketQuote(["usAMD","usAAPL"])``，而
+        # ``fsopenapi/api/market_push.py::subscribe`` 对 ``codes`` 不做任何
+        # lower/upper 转换 —— 代码大小写原样上行、由服务端匹配。
+        # 旧实现无条件 ``lower()`` 会把 ``usAAPL`` 发成 ``usapl``，与官方客户端
+        # 的线上字节不一致（美股代码前缀后的 ticker 为大写），属高风险偏差。
+        wire_codes = [str(c) for c in self.cfg.codes if str(c).strip()]
+        # 回执比对仍用大小写不敏感集合：服务端回显的大小写不保证与请求一致，
+        # 判定"哪些代码被接受"不应因大小写差异误报成"缺代码"。
+        match_codes = [c.strip().lower() for c in wire_codes]
+        if not wire_codes:
             with self._lock:
                 self._subscribed = 0
                 self._confirmed_topics = []
@@ -1063,14 +1116,14 @@ class MarketFeed:
         pending: Dict[str, Tuple[str, Set[str]]] = {}
         for topic in self.cfg.topics:
             rid = f"sub-{uuid.uuid4().hex[:8]}"
-            pending[rid] = (str(topic), set(codes))
+            pending[rid] = (str(topic), set(match_codes))
             await self._send(ws, {"act": "sub",
-                                  "items": [{"topic": topic, "code": codes}],
+                                  "items": [{"topic": topic, "code": wire_codes}],
                                   "requestid": rid})
 
         if not self.cfg.require_subscribe_ack:
             with self._lock:
-                self._subscribed = len(codes)
+                self._subscribed = len(wire_codes)
                 self._confirmed_topics = [str(t) for t in self.cfg.topics]
                 self._sub_ack_mode = "disabled"
             return
@@ -1109,7 +1162,7 @@ class MarketFeed:
             self.ingest(payload)
 
         with self._lock:
-            self._subscribed = len(codes)
+            self._subscribed = len(wire_codes)
             self._confirmed_topics = [str(t) for t in self.cfg.topics]
             self._sub_ack_mode = ack_mode or "subRep"
 

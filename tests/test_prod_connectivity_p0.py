@@ -22,6 +22,7 @@ import os
 import threading
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import pytest
@@ -32,10 +33,20 @@ from ai_trader.market.feed import (
     FeedAuthError,
     FeedConfig,
     FeedState,
+    FeedSubscriptionError,
     MarketFeed,
 )
 
 from tests.helpers import live_cfg
+
+#: 2026-11-17 唯一一次受控生产 WS 连接抓到的**真实订阅回执字节**（未改动）。
+#: 该回执只含 ``denied: ["usAAPL"]``，是"无推送权限"的明确拒绝。
+REAL_SUBREP = (Path(__file__).resolve().parent / "fixtures" / "fosun"
+               / "ws_subrep_denied_20261117.json")
+
+
+def _real_denied_frame() -> Dict[str, Any]:
+    return json.loads(REAL_SUBREP.read_text(encoding="utf-8"))["frame"]
 
 # --------------------------------------------------------------------------- #
 # 假凭证（不是密钥，只是用于验证"有没有被传进去"的占位字符串）
@@ -340,6 +351,27 @@ class PushServer:
         if self.ack == "opaque":
             await ws.send(json.dumps({"requestid": rid, "topic": "sub"}))
             return
+        if self.ack == "real_denied":
+            # 逐字节重放真实生产回执（只替换 requestid 为本轮请求的 id）
+            frame = dict(_real_denied_frame())
+            frame["requestid"] = rid
+            await ws.send(json.dumps(frame, ensure_ascii=False))
+            return
+        if self.ack == "official":
+            # 官方 push.proto::SubRepItem 结构（scode/fcode/invalid/denied）
+            await ws.send(json.dumps({
+                "requestid": rid,
+                "subRep": json.dumps([{"topic": topic, "scode": codes, "fcode": [],
+                                       "invalid": [], "denied": []}]),
+            }))
+            return
+        if self.ack == "official_denied":
+            await ws.send(json.dumps({
+                "requestid": rid,
+                "subRep": json.dumps([{"topic": topic, "scode": [], "fcode": [],
+                                       "invalid": [], "denied": codes}]),
+            }))
+            return
         await ws.send(json.dumps({
             "requestid": rid,
             "subRep": json.dumps({topic: codes}),
@@ -470,6 +502,128 @@ def test_subscribed_only_after_server_ack():
         assert snap["subscription"]["confirmed_topics"] == ["qt"]
         assert snap["subscription"]["ack_mode"] == "subRep"
         assert snap["subscribed_codes"] == 1
+    finally:
+        feed.stop()
+        srv.stop()
+
+
+def test_subscribe_preserves_code_case_and_acks_mixed_case():
+    """F-WS-1：线上订阅保持调用方给出的大小写；回执比对仍大小写不敏感。
+
+    证据：官方 ``example/push_example.py`` 订阅
+    ``subscribePretMarketQuote(["usAMD","usAAPL"])``，而
+    ``fsopenapi/api/market_push.py::subscribe`` 对 ``codes`` 不做任何
+    lower/upper 转换 —— 代码大小写是线上语义的一部分，由服务端原样匹配。
+    旧实现无条件 ``lower()`` 会把 ``usAAPL`` 发成 ``usapl``，与官方客户端的
+    线上字节不一致。
+
+    修复后必须同时满足：线上代码原样保留 **且** 服务端按原样回显时订阅仍被
+    确认（比对集合走小写），否则会把"大小写不同"误判成"缺代码"。
+    """
+    srv = PushServer(ack="ok").start()
+    feed = MarketFeed(_feed_cfg(srv, codes=("usAAPL",)), auth_provider=_provider())
+    try:
+        assert feed.start(timeout=8) is True, feed.snapshot()["last_error"]
+        snap = feed.snapshot()
+        assert snap["state"] == FeedState.SUBSCRIBED
+        assert snap["subscription"]["ack_mode"] == "subRep"
+        assert srv.subs, "服务端没收到订阅"
+        wired = srv.subs[0]["items"][0]["code"]
+        assert wired == ["usAAPL"], f"线上代码被改写：{wired}"
+    finally:
+        feed.stop()
+        srv.stop()
+
+
+def test_ack_accepts_official_subrep_item_shape():
+    """F-WS-2：官方 ``push.proto::SubRepItem`` 结构必须能被确认。
+
+    官方回执是 ``[{topic, scode(成功), fcode(失败), invalid(无效), denied(无权限)}]``，
+    不是 ``{topic: [codes]}``。旧实现只认后者 → 真实回执恒为
+    ``ACK_UNVERIFIED``，生产永远进不了 ``SUBSCRIBED``。
+    """
+    srv = PushServer(ack="official").start()
+    feed = MarketFeed(_feed_cfg(srv, codes=("usAAPL",)), auth_provider=_provider())
+    try:
+        assert feed.start(timeout=8) is True, feed.snapshot()["last_error"]
+        snap = feed.snapshot()
+        assert snap["state"] == FeedState.SUBSCRIBED
+        assert snap["subscription"]["ack_mode"] == "subRep"
+        assert snap["subscribed_codes"] == 1
+    finally:
+        feed.stop()
+        srv.stop()
+
+
+def test_ack_official_shape_with_denied_code_fails_closed():
+    """官方结构里 ``denied`` 非空 → 该代码未被接受，绝不报订阅成功。"""
+    srv = PushServer(ack="official_denied").start()
+    feed = MarketFeed(_feed_cfg(srv, codes=("usAAPL",)), auth_provider=_provider())
+    try:
+        assert feed.start(timeout=8) is False
+        assert feed.state == FeedState.FAILED
+        assert feed.snapshot()["subscribed_codes"] == 0
+    finally:
+        feed.stop()
+        srv.stop()
+
+
+# --------------------------------------------------------------------------- #
+# F-WS-2：用**真实生产回执字节**验证门禁（2026-11-17 唯一一次受控 WS 连接）
+# --------------------------------------------------------------------------- #
+def test_real_production_subrep_denied_parses_to_empty_accept_set():
+    """真实回执只有 ``denied`` 没有 ``scode`` → 接受集合必须是空集（不是 None）。
+
+    None 会被上层当成"不可核实"（ACK_UNVERIFIED），空集才是"一条也没接受"，
+    进而按"缺代码"明确失败 —— 两者都不许变成 SUBSCRIBED，但诊断不同。
+    """
+    frame = _real_denied_frame()
+    parsed = MarketFeed._parse_subrep(frame["subRep"])
+    assert parsed == {"qt": set()}
+    # 线上也可能是同内容的 JSON 字符串，解析器必须两种都吃
+    assert MarketFeed._parse_subrep(json.dumps(frame["subRep"])) == {"qt": set()}
+
+
+def test_real_production_subrep_denied_is_rejected_not_subscribed():
+    """真实拒绝回执 + requestid 命中 → 必须明确失败，绝不确认订阅。"""
+    frame = _real_denied_frame()
+    feed = MarketFeed(FeedConfig(url="ws://127.0.0.1:0/x", codes=("usAAPL",),
+                                 require_auth=False, require_subscribe_ack=False))
+    pending = {frame["requestid"]: ("qt", {"usapl"})}
+    with pytest.raises(FeedSubscriptionError) as ei:
+        feed._ack_verdict(frame, pending)
+    assert "未被全部接受" in str(ei.value)
+    assert feed.snapshot()["subscribed_codes"] == 0
+
+
+def test_real_production_subrep_envelope_time_is_microseconds():
+    """回执 ``time`` 是 UNIX **微秒**（官方 push.proto 明确标注 us）。
+
+    1794911830383098 us 必须解出 2026-11-17T10:37:10.383098Z，且晚于本端
+    建连时刻 2026-11-17T10:37:10.357609Z —— 两条独立时钟上的次序仍然成立。
+    """
+    frame = _real_denied_frame()
+    got = datetime.fromtimestamp(frame["time"] / 1_000_000, tz=timezone.utc)
+    assert got.isoformat() == "2026-11-17T10:37:10.383098+00:00"
+    connected = datetime.fromisoformat("2026-11-17T10:37:10.357609+00:00")
+    assert 0 <= (got - connected).total_seconds() < 1.0
+
+
+def test_real_production_denied_ack_makes_feed_fail_closed():
+    """端到端重放真实拒绝回执：必须 FAILED，且诊断明确指出"未被全部接受"。
+
+    这是本轮最重要的一条：生产确实回了回执（不是超时），回执里
+    ``denied: ["usAAPL"]`` —— 门禁必须把它判成失败，绝不能因为
+    "requestid 对上了" 就进 ``SUBSCRIBED``。
+    """
+    srv = PushServer(ack="real_denied").start()
+    feed = MarketFeed(_feed_cfg(srv, codes=("usAAPL",)), auth_provider=_provider())
+    try:
+        assert feed.start(timeout=8) is False
+        snap = feed.snapshot()
+        assert snap["state"] == FeedState.FAILED
+        assert "未被全部接受" in snap["last_error"], snap["last_error"]
+        assert snap["subscribed_codes"] == 0
     finally:
         feed.stop()
         srv.stop()

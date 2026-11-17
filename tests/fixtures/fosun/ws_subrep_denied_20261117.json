@@ -1,0 +1,30 @@
+{
+  "_source": "2026-11-17T10:37:10Z 生产 WebSocket 订阅回执（wss://openapi-push.fosunxcz.com/msg/v1/push）",
+  "_note": "原样保存，未做任何字段增删；不含凭据（只有主题名、服务端时间戳、本端生成的 requestid、证券代码）。requestid 由本端 uuid4 生成，非敏感。subRep 在 JSON 传输层可能是同内容的字符串，解析器两种形态都支持。",
+  "_observation": "topic=subrep；time=1794911830383098（UNIX 微秒，解出 2026-11-17T10:37:10.383098Z，比本端建连时刻晚 25.5ms）；subRep 只有 denied，无 scode/fcode/invalid → 该代码在 qt 主题下无推送权限。",
+  "frame": {
+    "topic": "subrep",
+    "time": 1794911830383098,
+    "requestid": "sub-c5314f63",
+    "subRep": [
+      {
+        "topic": "qt",
+        "denied": [
+          "usAAPL"
+        ]
+      }
+    ]
+  },
+  "sent_request": {
+    "act": "sub",
+    "items": [
+      {
+        "topic": "qt",
+        "code": [
+          "usAAPL"
+        ]
+      }
+    ],
+    "requestid": "sub-c5314f63"
+  }
+}
