@@ -171,6 +171,9 @@ class FosunQuoteSnapshot:
     delayed: bool = False
     #: 官方交易状态码（tradeStatus）
     trade_status: int = 0
+    #: 分时段的子行情：``{"prepost": …, "nightQuote": …}``。
+    #: **与主价格隔离**，绝不合并成一个"常规报价"。
+    session_quotes: Dict[str, "FosunSessionQuote"] = field(default_factory=dict)
     raw: Dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> Dict[str, Any]:
@@ -179,6 +182,79 @@ class FosunQuoteSnapshot:
                 "high": self.high, "low": self.low, "close": self.close,
                 "receive_time": self.receive_time.isoformat(),
                 "event_time": None, "time_semantics": self.time_semantics}
+
+
+#: 美股四段时段（美东）。用于把子行情按**时间**归类，而不是按未知的 type 枚举。
+SESSION_WINDOWS = (("pre", (4, 0), (9, 30)),
+                   ("regular", (9, 30), (16, 0)),
+                   ("post", (16, 0), (20, 0)),
+                   ("night", (20, 0), (4, 0)))
+
+
+#: 官方子行情字段名 → 它所属的时段集合。字段名是官方的分类，比时间推断更权威。
+SESSION_BUCKETS = {"prepost": ("pre", "post"), "nightQuote": ("night",)}
+
+
+def classify_session(key: str, local_dt: Optional[datetime]) -> str:
+    """判定子行情时段。
+
+    规则：**官方字段名给出候选集合**，时间只用来在集合内细分；
+    两者冲突（例如 ``prepost`` 的时间恰好是 20:00 夜盘边界）就标 ``ambiguous``，
+    不做二选一的猜测。
+    """
+    if local_dt is None:
+        return "unknown"
+    derived = session_of(local_dt)
+    allowed = SESSION_BUCKETS.get(key, ())
+    if not allowed:
+        return derived
+    return derived if derived in allowed else "ambiguous"
+
+
+def session_of(local_dt: datetime) -> str:
+    """按美东时间判定时段。**只看时间**，不解释官方 ``type`` 枚举。"""
+    minutes = local_dt.hour * 60 + local_dt.minute
+    for name, start, end in SESSION_WINDOWS:
+        a = start[0] * 60 + start[1]
+        b = end[0] * 60 + end[1]
+        if a < b:
+            if a <= minutes < b:
+                return name
+        else:                      # 跨零点（night: 20:00–04:00）
+            if minutes >= a or minutes < b:
+                return name
+    return "unknown"
+
+
+@dataclass(frozen=True)
+class FosunSessionQuote:
+    """单个时段的子行情（``prepost`` / ``nightQuote``）。
+
+    这些子对象**不能**与常规报价混用：它们有各自的时间戳与成交量。
+    """
+
+    symbol: str
+    session: str                 # pre / regular / post / night / unknown
+    price: float
+    open: float
+    high: float
+    low: float
+    prev_close: float
+    volume: float
+    event_time: Optional[datetime]
+    time_semantics: str = "vendor_quote_time"
+    #: 官方 ``type`` 字段原样保留。**不解释**——枚举含义未见官方文档。
+    raw_type: Optional[int] = None
+    #: 该时段内部的涨跌幅（官方已给，未自行计算）
+    chg_pct: float = 0.0
+
+    def as_dict(self) -> Dict[str, Any]:
+        return {"symbol": self.symbol, "session": self.session,
+                "price": self.price, "prev_close": self.prev_close,
+                "volume": self.volume,
+                "event_time": self.event_time.isoformat() if self.event_time else None,
+                "time_semantics": self.time_semantics,
+                "raw_type": self.raw_type, "chg_pct": self.chg_pct}
 
 
 @dataclass(frozen=True)
@@ -270,6 +346,22 @@ def _quote_event_time(raw: Dict[str, Any]) -> Tuple[Optional[datetime], str]:
                              f"quote 时间非法：qtDate={date_v!r} qtTime={time_v!r}") from None
 
 
+def signed_float(value: Any, default: float = 0.0) -> float:
+    """允许负数的数值（chgPct/chgVal）。缺失或非数字给默认值。
+
+    为什么单独一个函数：``to_float`` 会拒绝负数（价格不能为负），
+    但涨跌幅本来就可以为负。早期把 chgPct 丢给 ``to_float``，
+    结果整个 nightQuote 解析失败被静默跳过。
+    """
+    if value is None or isinstance(value, bool):
+        return default
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        return default
+    return num if math.isfinite(num) else default
+
+
 def _scaled(value: Any, *, field_name: str, allow_zero: bool = True) -> float:
     """放大整数 → 实际价格（÷1e4）。"""
     num = to_float(value, field_name=field_name, allow_zero=allow_zero)
@@ -308,6 +400,7 @@ def parse_quote(raw: Dict[str, Any], *, symbol: str,
             event_time=event_time,
             delayed=bool(raw.get("delay", False)),
             trade_status=int(raw.get("tradeStatus") or 0),
+            session_quotes=_collect_session_quotes(raw, symbol),
             raw=dict(raw),
         )
 
@@ -325,6 +418,38 @@ def parse_quote(raw: Dict[str, Any], *, symbol: str,
         time_semantics="unknown",
         event_time=None,
         raw=dict(raw),
+    )
+
+
+def parse_session_quote(raw: Dict[str, Any], *, symbol: str,
+                        key: str) -> FosunSessionQuote:
+    """解析 ``prepost`` / ``nightQuote`` 这类子行情。
+
+    时段由**官方时间戳**换算后判定，而不是从 ``type`` 枚举推断
+    （该枚举含义未见官方文档，标 UNKNOWN）。
+    """
+    if not isinstance(raw, dict):
+        raise FosunDataError("bad_payload", f"{key} 不是对象")
+    event_time, semantics = _quote_event_time(raw)
+    local = event_time.astimezone(ZoneInfo("America/New_York")) if event_time else None
+    session = classify_session(key, local)
+    raw_type = raw.get("type")
+    try:
+        type_int = int(raw_type) if raw_type is not None else None
+    except (TypeError, ValueError):
+        type_int = None
+    return FosunSessionQuote(
+        symbol=normalize_symbol(symbol) or str(symbol).upper(),
+        session=session,
+        price=_scaled(raw.get("price"), field_name="price", allow_zero=False),
+        open=_scaled(raw.get("open"), field_name="price"),
+        high=_scaled(raw.get("high"), field_name="price"),
+        low=_scaled(raw.get("low"), field_name="price"),
+        prev_close=_scaled(raw.get("pClose"), field_name="price"),
+        volume=to_float(raw.get("vol"), field_name="volume"),
+        event_time=event_time, time_semantics=semantics,
+        raw_type=type_int,
+        chg_pct=signed_float(raw.get("chgPct")) / QUOTE_PCT_SCALE,
     )
 
 
@@ -373,6 +498,21 @@ def parse_kline_row(row: Sequence[Any], *, symbol: str) -> FosunKlineBar:
         close=to_float(row[4], field_name="price"),
         volume=to_float(row[5], field_name="volume"),
     )
+
+
+def _collect_session_quotes(raw: Dict[str, Any],
+                            symbol: str) -> Dict[str, FosunSessionQuote]:
+    """把响应里出现的子行情挑出来解析。解析失败只跳过，不影响主报价。"""
+    out: Dict[str, FosunSessionQuote] = {}
+    for key in ("prepost", "nightQuote"):
+        node = raw.get(key)
+        if not isinstance(node, dict):
+            continue
+        try:
+            out[key] = parse_session_quote(node, symbol=symbol, key=key)
+        except FosunDataError:
+            continue
+    return out
 
 
 def _first_quote_row(data: Any, wire: str, symbol: str) -> Optional[Dict[str, Any]]:

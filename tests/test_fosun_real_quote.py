@@ -19,6 +19,7 @@ from ai_trader.market.providers import fosun as F
 from ai_trader.market.providers.fosun_protocol import FosunSession
 from ai_trader.market.sessions import QuoteUnavailable
 from datetime import time as dtime
+from zoneinfo import ZoneInfo
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "fosun" / "quote_usAAPL_real_20261116.json"
 RAW = json.loads(FIXTURE.read_text(encoding="utf-8"))
@@ -179,3 +180,60 @@ def test_gateway_rejects_stale_quote():
     now = datetime(2026, 11, 17, 21, 0, 2, tzinfo=timezone.utc)   # 一天之后
     with pytest.raises(QuoteUnavailable):
         gw.price("AAPL", "display", market="us", now=now)
+
+
+# ---------------------------------------------------------------------- #
+# 分时段子行情（prepost / nightQuote）
+# ---------------------------------------------------------------------- #
+def test_session_quotes_are_parsed_and_isolated_from_main_price():
+    snap = F.parse_quote(RAW, symbol="usAAPL", receive_time=datetime.now(timezone.utc))
+    assert snap.last == pytest.approx(352.78), "主价格不得被子行情覆盖"
+    assert set(snap.session_quotes) == {"prepost", "nightQuote"}
+    assert snap.session_quotes["prepost"].price == pytest.approx(353.795)
+    assert snap.session_quotes["nightQuote"].price == pytest.approx(351.48)
+
+
+def test_night_quote_classified_as_night():
+    snap = F.parse_quote(RAW, symbol="usAAPL", receive_time=datetime.now(timezone.utc))
+    nq = snap.session_quotes["nightQuote"]
+    assert nq.session == "night"
+    assert nq.event_time == datetime(2026, 11, 17, 8, 42, 9, 181000, tzinfo=timezone.utc)
+    assert nq.volume == pytest.approx(36331.0)
+
+
+def test_prepost_on_boundary_is_ambiguous_not_guessed():
+    """prepost 的时间是 20:00:00（盘后收盘 vs 夜盘开盘的边界）。
+
+    官方字段名说它属于 pre/post，时间却指向 night —— 冲突时标 ambiguous，
+    绝不二选一。
+    """
+    snap = F.parse_quote(RAW, symbol="usAAPL", receive_time=datetime.now(timezone.utc))
+    pq = snap.session_quotes["prepost"]
+    assert pq.session == "ambiguous"
+    assert pq.raw_type == 3, "官方 type 原样保留，不解释其含义"
+
+
+def test_negative_chg_pct_does_not_kill_the_sub_quote():
+    """回归：chgPct 为负曾导致整个 nightQuote 被静默跳过。"""
+    raw = dict(RAW, nightQuote=dict(RAW["nightQuote"], chgPct=-1234))
+    snap = F.parse_quote(raw, symbol="usAAPL", receive_time=datetime.now(timezone.utc))
+    assert snap.session_quotes["nightQuote"].chg_pct == pytest.approx(-12.34)
+
+
+@pytest.mark.parametrize("hour,minute,expected", [
+    (4, 0, "pre"), (9, 29, "pre"),
+    (9, 30, "regular"), (15, 59, "regular"),
+    (16, 0, "post"), (19, 59, "post"),
+    (20, 0, "night"), (3, 0, "night"),
+])
+def test_session_of_windows(hour, minute, expected):
+    local = datetime(2026, 11, 17, hour, minute, tzinfo=ZoneInfo("America/New_York"))
+    assert F.session_of(local) == expected
+
+
+def test_broken_sub_quote_is_skipped_without_breaking_main():
+    raw = dict(RAW, nightQuote={"price": "oops"})
+    snap = F.parse_quote(raw, symbol="usAAPL", receive_time=datetime.now(timezone.utc))
+    assert snap.last == pytest.approx(352.78)
+    assert "nightQuote" not in snap.session_quotes
+    assert "prepost" in snap.session_quotes
