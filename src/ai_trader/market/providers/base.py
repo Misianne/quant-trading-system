@@ -124,6 +124,9 @@ class MarketDataProvider:
         self.health = ProviderHealth(provider=self.name, connected=False,
                                      capabilities=self.capabilities().as_dict())
         self._seq = _SequenceTracker()
+        #: 合法但"不是事件"的原始记录数（例如 QUOTING 状态）。
+        #: 与 ``health.dropped`` 分开：丢弃是**故障**，跳过是**正常**。
+        self.skipped = 0
 
     # ------------------------------------------------------------------ #
     def capabilities(self) -> ProviderCapabilities:      # pragma: no cover
@@ -188,8 +191,16 @@ class MarketDataProvider:
         raw = self._poll_raw()
         out: List[MarketEvent] = []
         for item in raw:
+            skipped_before = self.skipped
             ev = self._normalize(item)
             if ev is None:
+                if self.skipped != skipped_before:
+                    # 明确的"合法但不产生事件"（如非停牌的 status），不算故障
+                    continue
+                # 被丢弃的原始消息也要计数，否则"字段名对不上"会表现成
+                # "这个供应商没有数据"，是最难查的一类静默失效。
+                self.health.dropped += 1
+                self._note_drop(item)
                 continue
             self._apply_quality(ev, now=self._quality_now(ev))
             self.health.messages += 1
@@ -198,6 +209,21 @@ class MarketDataProvider:
         return out
 
     # ------------------------------------------------------------------ #
+    # ------------------------------------------------------------------ #
+    def _reject(self, reason: str, detail: str = "") -> None:
+        """记录一次"明确拒绝"（比静默 None 有用得多）。"""
+        key = str(reason or "unknown")
+        self.health.rejected[key] = int(self.health.rejected.get(key, 0)) + 1
+        if detail:
+            self.health.last_error = f"[{key}] {detail}"
+
+    def _note_drop(self, item: Any) -> None:
+        """子类可覆写，用于按原因归类丢弃。"""
+        return None
+
+    def rejections(self) -> Dict[str, int]:
+        return dict(self.health.rejected)
+
     def _quality_now(self, ev: MarketEvent) -> Optional[datetime]:
         """质量判定的"当前时间"。
 

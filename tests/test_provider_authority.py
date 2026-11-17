@@ -141,17 +141,38 @@ def test_replayed_resume_rejected_by_version():
     assert not v2.accepted and "VERSION_STALE" in v2.reason
 
 
-def test_unsigned_event_rejected_by_default():
-    """本轮调查的所有供应商都没有消息签名 → 默认必须拒绝。"""
+def test_unsigned_resume_rejected_by_default():
+    """没有消息签名 → **恢复交易**必须拒绝（放大风险方向）。"""
     r = router(NATIVE)          # 默认 NoSignatureVerifier
-    v = r.can_apply(halt(), symbol="AAPL", exchange="nasdaq", now=NOW)
+    v = r.can_apply(halt(halted=False), symbol="AAPL", exchange="nasdaq", now=NOW)
     assert not v.accepted and "NO_SIGNATURE" in v.reason
     assert v.signature is SignatureStatus.UNSIGNED
+    assert v.risk_increasing is True
+
+
+def test_unsigned_halt_is_accepted():
+    """停牌是**收敛**风险方向，不要求签名。
+
+    早期实现对方向不加区分，未签名的真实停牌也会被拒 → 标的停在"可交易"
+    状态，等于 fail-open。停牌必须能生效，恢复才需要签名。
+    """
+    r = router(NATIVE)
+    v = r.can_apply(halt(halted=True), symbol="AAPL", exchange="nasdaq", now=NOW)
+    assert v.accepted, f"未签名停牌被拒 = fail-open：{v.reason}"
+    assert v.risk_increasing is False
+    assert v.signature is SignatureStatus.UNSIGNED
+
+
+def test_explicit_risk_direction_overrides_inference():
+    r = router(NATIVE, require_sig=False)
+    v = r.can_apply(halt(halted=False), symbol="AAPL", exchange="nasdaq",
+                    now=NOW, risk_increasing=True)
+    assert v.accepted and v.risk_increasing is True
 
 
 def test_unsigned_allowed_only_when_explicitly_configured():
     r = router(NATIVE, require_sig=False)
-    v = r.can_apply(halt(), symbol="AAPL", exchange="nasdaq", now=NOW)
+    v = r.can_apply(halt(halted=False), symbol="AAPL", exchange="nasdaq", now=NOW)
     assert v.accepted
     assert v.signature is SignatureStatus.UNSIGNED
 

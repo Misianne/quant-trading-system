@@ -192,7 +192,9 @@ def test_feed_quote_raises_when_no_data():
 def test_feed_quote_returns_latest_trade(tmp_path):
     rows = [alpaca_row(1), alpaca_row(2)]
     p = AlpacaProvider(make_fixture(tmp_path / "a.jsonl", rows), {"batch_size": 10})
-    feed = ProviderFeed([p])
+    # 样本时间是固定历史日期，与真实墙钟的"年龄"必然很大；
+    # 本用例只验证"取最新一笔"，所以把新鲜度阈值放开，避免随日期漂移。
+    feed = ProviderFeed([p], max_age_seconds=10 ** 9)
     feed.connect_all(); feed.subscribe(["AAPL"]); feed.poll()
     q = feed.quote("AAPL")
     assert q.last == 102.0

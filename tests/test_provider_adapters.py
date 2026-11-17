@@ -152,16 +152,37 @@ def test_databento_trade_price_scaled():
     assert tr and abs(tr[0].price - 201.2) < 1e-6
 
 
-def test_databento_source_event_id():
-    rows = [{"type": "status", "symbol": "AAPL", "publisher_id": "XNAS",
-             "ts_event": int(T0.timestamp() * 1e9), "sequence": 1,
-             "action": "H", "id": "evt-42"}]
-    import tempfile
-    f = Path(tempfile.mkdtemp()) / "d.jsonl"
-    f.write_text(json.dumps(rows[0]) + "\n", encoding="utf-8")
+def test_databento_has_no_source_event_id():
+    """官方 status/trades 记录**没有**事件 ID 字段，能力声明必须如实为 False。
+
+    早期实现从虚构的 ``id`` 字段里取 ``source_event_id``，用它做幂等键会
+    在真实数据上全部取到空串 —— 靠它去重等于没有去重。
+    """
+    caps = DatabentoProvider().capabilities()
+    assert caps.source_event_id is False
+
+    f = Path(__import__("tempfile").mkdtemp()) / "d.jsonl"
+    f.write_text(json.dumps({
+        "rtype": 18, "ts_event": int(T0.timestamp() * 1e9),
+        "ts_recv": int(T0.timestamp() * 1e9), "publisher_id": 2,
+        "instrument_id": 42, "symbol": "AAPL",
+        "action": 8, "reason": 30, "id": "vendor-only-field",
+    }) + "\n", encoding="utf-8")
     p = DatabentoProvider(f, {"batch_size": 5})
     p.connect(); p.subscribe(["AAPL"])
-    assert p.poll()[0].source_event_id == "evt-42"
+    ev = p.poll()[0]
+    assert ev.source_event_id == "", "不得把非官方字段伪装成事件 ID"
+    assert ev.halted is True
+
+
+def test_databento_status_carries_no_sequence():
+    """status 记录没有 sequence（官方字段表无此项），能力声明须如实。"""
+    caps = DatabentoProvider().capabilities()
+    assert caps.sequence_field is False
+    p = DatabentoProvider(FIX / "databento_status.jsonl", {"batch_size": 10})
+    p.connect(); p.subscribe(["AAPL"])
+    halts = [e for e in p.poll() if isinstance(e, HaltEvent)]
+    assert halts and all(e.sequence == 0 for e in halts)
 
 
 # ---------------------------------------------------------------------- #

@@ -15,7 +15,7 @@
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, Tuple
 
 #: 交易所代码归一化表（供应商写法 → 内部小写）
@@ -79,11 +79,24 @@ def parse_timestamp(raw: Any, unit: str = "iso") -> Tuple[Optional[datetime], st
     try:
         if isinstance(raw, datetime):
             dt = raw
-        elif isinstance(raw, (int, float)) or str(raw).strip().isdigit():
-            val = float(raw)
+        elif isinstance(raw, int) and not isinstance(raw, bool) or (
+                isinstance(raw, str) and raw.strip().lstrip("-").isdigit()):
+            # **整数用整数运算**：先 // 再取余。
+            # 走 float 会丢精度 —— 1794839400123456789 ns 会被四舍五入成
+            # ...123457 µs（差 1 µs），而交易所时间戳的意义恰恰在纳秒级。
             if unit not in _UNIT_DIV:
                 return None, f"整数时间戳必须指定 unit（收到 {unit!r}）"
-            dt = datetime.fromtimestamp(val / _UNIT_DIV[unit], tz=timezone.utc)
+            total = int(str(raw).strip()) if isinstance(raw, str) else int(raw)
+            div = int(_UNIT_DIV[unit])
+            secs, rem = divmod(total, div)
+            # 余数换算成微秒（datetime 的最小分辨率）：向下取整，不四舍五入
+            micros = rem * 1_000_000 // div
+            dt = (datetime(1970, 1, 1, tzinfo=timezone.utc)
+                  + timedelta(seconds=secs, microseconds=micros))
+        elif isinstance(raw, float):
+            if unit not in _UNIT_DIV:
+                return None, f"整数时间戳必须指定 unit（收到 {unit!r}）"
+            dt = datetime.fromtimestamp(raw / _UNIT_DIV[unit], tz=timezone.utc)
         else:
             text = str(raw).strip().replace("Z", "+00:00")
             dt = datetime.fromisoformat(text)

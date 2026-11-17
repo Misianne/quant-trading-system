@@ -1,0 +1,544 @@
+{
+  "generated_at": "2026-11-17T04:50:38+00:00",
+  "git": {
+    "head": "6e0c4ef",
+    "branch": "master",
+    "dirty": true
+  },
+  "credential": {
+    "env_var": "DATABENTO_API_KEY",
+    "present": false,
+    "note": "仅报告存在性，不读取、不记录、不打印取值"
+  },
+  "schema_facts": {
+    "rtype_status": 18,
+    "rtype_trades": 0,
+    "status_actions": {
+      "0": "NONE",
+      "1": "PRE_OPEN",
+      "2": "PRE_CROSS",
+      "3": "QUOTING",
+      "4": "CROSS",
+      "5": "ROTATION",
+      "6": "NEW_PRICE_INDICATION",
+      "7": "TRADING",
+      "8": "HALT",
+      "9": "PAUSE",
+      "10": "SUSPEND",
+      "11": "PRE_CLOSE",
+      "12": "CLOSE",
+      "13": "POST_CLOSE",
+      "14": "SSR_CHANGE",
+      "15": "NOT_AVAILABLE_FOR_TRADING"
+    },
+    "halting_actions": [
+      8,
+      9,
+      10
+    ],
+    "trading_actions": [
+      7
+    ],
+    "ambiguous_actions": [
+      15
+    ],
+    "mwcb_reasons": [
+      120,
+      121,
+      122,
+      123,
+      124
+    ],
+    "reason_count": 34,
+    "publisher_count": 72,
+    "price_scale": 1000000000.0,
+    "undef_price": 9223372036854775807
+  },
+  "samples": {
+    "synthetic_ambiguous_status.jsonl": {
+      "events": 2,
+      "ignored_status": {},
+      "rejected": {},
+      "dropped": 0,
+      "parse_errors": 0,
+      "rows": [
+        {
+          "type": "trades",
+          "symbol": "AAPL",
+          "exchange": "nasdaq",
+          "event_time": "2026-11-16T14:30:00+00:00",
+          "receive_time": "2026-11-16T14:30:00.000120+00:00",
+          "sequence": 4001,
+          "authority": "A_vendor_quote",
+          "usable": true,
+          "flags": [],
+          "price": 150.0,
+          "size": 10.0,
+          "side": "B",
+          "price_scale": "fixed_1e-9"
+        },
+        {
+          "type": "status",
+          "symbol": "AAPL",
+          "exchange": "nasdaq",
+          "event_time": "2026-11-16T14:30:01+00:00",
+          "receive_time": "2026-11-16T14:30:01.000080+00:00",
+          "sequence": 0,
+          "authority": "B_exchange_halt",
+          "usable": true,
+          "flags": [
+            "ambiguous_status"
+          ],
+          "halted": true,
+          "code": "NOT_AVAILABLE_FOR_TRADING",
+          "reason": "NONE",
+          "is_trading": false,
+          "trading_event": "NONE"
+        }
+      ]
+    },
+    "synthetic_luld_pause.jsonl": {
+      "events": 6,
+      "ignored_status": {},
+      "rejected": {},
+      "dropped": 0,
+      "parse_errors": 0,
+      "rows": [
+        {
+          "type": "trades",
+          "symbol": "AAPL",
+          "exchange": "nasdaq",
+          "event_time": "2026-11-16T14:30:00+00:00",
+          "receive_time": "2026-11-16T14:30:00.000120+00:00",
+          "sequence": 1001,
+          "authority": "A_vendor_quote",
+          "usable": true,
+          "flags": [],
+          "price": 201.2,
+          "size": 100.0,
+          "side": "B",
+          "price_scale": "fixed_1e-9"
+        },
+        {
+          "type": "trades",
+          "symbol": "AAPL",
+          "exchange": "nasdaq",
+          "event_time": "2026-11-16T14:30:01+00:00",
+          "receive_time": "2026-11-16T14:30:01.000120+00:00",
+          "sequence": 1002,
+          "authority": "A_vendor_quote",
+          "usable": true,
+          "flags": [],
+          "price": 201.15,
+          "size": 200.0,
+          "side": "A",
+          "price_scale": "fixed_1e-9"
+        },
+        {
+          "type": "status",
+          "symbol": "AAPL",
+          "exchange": "nasdaq",
+          "event_time": "2026-11-16T14:30:02+00:00",
+          "receive_time": "2026-11-16T14:30:02.000080+00:00",
+          "sequence": 0,
+          "authority": "B_exchange_halt",
+          "usable": true,
+          "flags": [],
+          "halted": true,
+          "code": "PAUSE",
+          "reason": "LULD_PAUSE",
+          "is_trading": false,
+          "trading_event": "NONE"
+        },
+        {
+          "type": "trades",
+          "symbol": "AAPL",
+          "exchange": "nasdaq",
+          "event_time": "2026-11-16T14:30:10+00:00",
+          "receive_time": "2026-11-16T14:30:10.000120+00:00",
+          "sequence": 1003,
+          "authority": "A_vendor_quote",
+          "usable": true,
+          "flags": [],
+          "price": 200.9,
+          "size": 50.0,
+          "side": "A",
+          "price_scale": "fixed_1e-9"
+        },
+        {
+          "type": "status",
+          "symbol": "AAPL",
+          "exchange": "nasdaq",
+          "event_time": "2026-11-16T14:35:00+00:00",
+          "receive_time": "2026-11-16T14:35:00.000080+00:00",
+          "sequence": 0,
+          "authority": "B_exchange_halt",
+          "usable": true,
+          "flags": [],
+          "halted": false,
+          "code": "TRADING",
+          "reason": "NONE",
+          "is_trading": true,
+          "trading_event": "NONE"
+        },
+        {
+          "type": "trades",
+          "symbol": "AAPL",
+          "exchange": "nasdaq",
+          "event_time": "2026-11-16T14:35:01+00:00",
+          "receive_time": "2026-11-16T14:35:01.000120+00:00",
+          "sequence": 1004,
+          "authority": "A_vendor_quote",
+          "usable": true,
+          "flags": [],
+          "price": 201.0,
+          "size": 100.0,
+          "side": "B",
+          "price_scale": "fixed_1e-9"
+        }
+      ]
+    },
+    "synthetic_luld_pause_nosym.jsonl": {
+      "events": 6,
+      "ignored_status": {},
+      "rejected": {},
+      "dropped": 0,
+      "parse_errors": 0,
+      "rows": [
+        {
+          "type": "trades",
+          "symbol": "AAPL",
+          "exchange": "nasdaq",
+          "event_time": "2026-11-16T14:30:00+00:00",
+          "receive_time": "2026-11-16T14:30:00.000120+00:00",
+          "sequence": 1001,
+          "authority": "A_vendor_quote",
+          "usable": true,
+          "flags": [],
+          "price": 201.2,
+          "size": 100.0,
+          "side": "B",
+          "price_scale": "fixed_1e-9"
+        },
+        {
+          "type": "trades",
+          "symbol": "AAPL",
+          "exchange": "nasdaq",
+          "event_time": "2026-11-16T14:30:01+00:00",
+          "receive_time": "2026-11-16T14:30:01.000120+00:00",
+          "sequence": 1002,
+          "authority": "A_vendor_quote",
+          "usable": true,
+          "flags": [],
+          "price": 201.15,
+          "size": 200.0,
+          "side": "A",
+          "price_scale": "fixed_1e-9"
+        },
+        {
+          "type": "status",
+          "symbol": "AAPL",
+          "exchange": "nasdaq",
+          "event_time": "2026-11-16T14:30:02+00:00",
+          "receive_time": "2026-11-16T14:30:02.000080+00:00",
+          "sequence": 0,
+          "authority": "B_exchange_halt",
+          "usable": true,
+          "flags": [],
+          "halted": true,
+          "code": "PAUSE",
+          "reason": "LULD_PAUSE",
+          "is_trading": false,
+          "trading_event": "NONE"
+        },
+        {
+          "type": "trades",
+          "symbol": "AAPL",
+          "exchange": "nasdaq",
+          "event_time": "2026-11-16T14:30:10+00:00",
+          "receive_time": "2026-11-16T14:30:10.000120+00:00",
+          "sequence": 1003,
+          "authority": "A_vendor_quote",
+          "usable": true,
+          "flags": [],
+          "price": 200.9,
+          "size": 50.0,
+          "side": "A",
+          "price_scale": "fixed_1e-9"
+        },
+        {
+          "type": "status",
+          "symbol": "AAPL",
+          "exchange": "nasdaq",
+          "event_time": "2026-11-16T14:35:00+00:00",
+          "receive_time": "2026-11-16T14:35:00.000080+00:00",
+          "sequence": 0,
+          "authority": "B_exchange_halt",
+          "usable": true,
+          "flags": [],
+          "halted": false,
+          "code": "TRADING",
+          "reason": "NONE",
+          "is_trading": true,
+          "trading_event": "NONE"
+        },
+        {
+          "type": "trades",
+          "symbol": "AAPL",
+          "exchange": "nasdaq",
+          "event_time": "2026-11-16T14:35:01+00:00",
+          "receive_time": "2026-11-16T14:35:01.000120+00:00",
+          "sequence": 1004,
+          "authority": "A_vendor_quote",
+          "usable": true,
+          "flags": [],
+          "price": 201.0,
+          "size": 100.0,
+          "side": "B",
+          "price_scale": "fixed_1e-9"
+        }
+      ]
+    },
+    "synthetic_mwcb_halt.jsonl": {
+      "events": 3,
+      "ignored_status": {},
+      "rejected": {},
+      "dropped": 0,
+      "parse_errors": 0,
+      "rows": [
+        {
+          "type": "trades",
+          "symbol": "AAPL",
+          "exchange": "nasdaq",
+          "event_time": "2026-11-16T14:30:00+00:00",
+          "receive_time": "2026-11-16T14:30:00.000120+00:00",
+          "sequence": 3001,
+          "authority": "A_vendor_quote",
+          "usable": true,
+          "flags": [],
+          "price": 300.0,
+          "size": 10.0,
+          "side": "B",
+          "price_scale": "fixed_1e-9"
+        },
+        {
+          "type": "status",
+          "symbol": "AAPL",
+          "exchange": "nasdaq",
+          "event_time": "2026-11-16T14:30:01+00:00",
+          "receive_time": "2026-11-16T14:30:01.000080+00:00",
+          "sequence": 0,
+          "authority": "B_exchange_halt",
+          "usable": true,
+          "flags": [
+            "ambiguous_status"
+          ],
+          "halted": true,
+          "code": "HALT",
+          "reason": "MARKET_WIDE_HALT_LEVEL1",
+          "is_trading": false,
+          "trading_event": "NONE"
+        },
+        {
+          "type": "status",
+          "symbol": "AAPL",
+          "exchange": "nasdaq",
+          "event_time": "2026-11-16T14:45:00+00:00",
+          "receive_time": "2026-11-16T14:45:00.000080+00:00",
+          "sequence": 0,
+          "authority": "B_exchange_halt",
+          "usable": true,
+          "flags": [
+            "ambiguous_status"
+          ],
+          "halted": false,
+          "code": "TRADING",
+          "reason": "MARKET_WIDE_HALT_RESUMPTION",
+          "is_trading": true,
+          "trading_event": "NONE"
+        }
+      ]
+    },
+    "synthetic_news_halt.jsonl": {
+      "events": 4,
+      "ignored_status": {},
+      "rejected": {},
+      "dropped": 0,
+      "parse_errors": 0,
+      "rows": [
+        {
+          "type": "trades",
+          "symbol": "AAPL",
+          "exchange": "nasdaq",
+          "event_time": "2026-11-16T14:30:00+00:00",
+          "receive_time": "2026-11-16T14:30:00.000120+00:00",
+          "sequence": 2001,
+          "authority": "A_vendor_quote",
+          "usable": true,
+          "flags": [],
+          "price": 400.1,
+          "size": 10.0,
+          "side": "B",
+          "price_scale": "fixed_1e-9"
+        },
+        {
+          "type": "status",
+          "symbol": "AAPL",
+          "exchange": "nasdaq",
+          "event_time": "2026-11-16T14:30:01+00:00",
+          "receive_time": "2026-11-16T14:30:01.000080+00:00",
+          "sequence": 0,
+          "authority": "B_exchange_halt",
+          "usable": true,
+          "flags": [],
+          "halted": true,
+          "code": "HALT",
+          "reason": "NEWS_PENDING",
+          "is_trading": false,
+          "trading_event": "NONE"
+        },
+        {
+          "type": "status",
+          "symbol": "AAPL",
+          "exchange": "nasdaq",
+          "event_time": "2026-11-16T15:00:00+00:00",
+          "receive_time": "2026-11-16T15:00:00.000080+00:00",
+          "sequence": 0,
+          "authority": "B_exchange_halt",
+          "usable": true,
+          "flags": [],
+          "halted": false,
+          "code": "TRADING",
+          "reason": "NEWS_RELEASED",
+          "is_trading": true,
+          "trading_event": "NONE"
+        },
+        {
+          "type": "trades",
+          "symbol": "AAPL",
+          "exchange": "nasdaq",
+          "event_time": "2026-11-16T15:00:01+00:00",
+          "receive_time": "2026-11-16T15:00:01.000120+00:00",
+          "sequence": 2002,
+          "authority": "A_vendor_quote",
+          "usable": true,
+          "flags": [],
+          "price": 402.3,
+          "size": 10.0,
+          "side": "B",
+          "price_scale": "fixed_1e-9"
+        }
+      ]
+    },
+    "synthetic_non_halt_status.jsonl": {
+      "events": 0,
+      "ignored_status": {
+        "QUOTING": 1,
+        "CLOSE": 1,
+        "SSR_CHANGE": 1
+      },
+      "rejected": {},
+      "dropped": 0,
+      "parse_errors": 0,
+      "rows": []
+    },
+    "synthetic_pretty.jsonl": {
+      "events": 3,
+      "ignored_status": {},
+      "rejected": {},
+      "dropped": 0,
+      "parse_errors": 0,
+      "rows": [
+        {
+          "type": "trades",
+          "symbol": "AAPL",
+          "exchange": "nasdaq",
+          "event_time": "2026-11-16T14:30:00+00:00",
+          "receive_time": "2026-11-16T14:30:00.000120+00:00",
+          "sequence": 1001,
+          "authority": "A_vendor_quote",
+          "usable": true,
+          "flags": [],
+          "price": 201.2,
+          "size": 100.0,
+          "side": "B",
+          "price_scale": "float"
+        },
+        {
+          "type": "status",
+          "symbol": "AAPL",
+          "exchange": "nasdaq",
+          "event_time": "2026-11-16T14:30:02+00:00",
+          "receive_time": "2026-11-16T14:30:02.000080+00:00",
+          "sequence": 0,
+          "authority": "B_exchange_halt",
+          "usable": true,
+          "flags": [],
+          "halted": true,
+          "code": "PAUSE",
+          "reason": "LULD_PAUSE",
+          "is_trading": false,
+          "trading_event": "NONE"
+        },
+        {
+          "type": "status",
+          "symbol": "AAPL",
+          "exchange": "nasdaq",
+          "event_time": "2026-11-16T14:35:02+00:00",
+          "receive_time": "2026-11-16T14:35:02.000080+00:00",
+          "sequence": 0,
+          "authority": "B_exchange_halt",
+          "usable": true,
+          "flags": [],
+          "halted": false,
+          "code": "TRADING",
+          "reason": "NONE",
+          "is_trading": true,
+          "trading_event": "NONE"
+        }
+      ]
+    }
+  },
+  "authority": {
+    "spec": {
+      "provider": "databento",
+      "native": true,
+      "signed": false,
+      "exchanges": [
+        "nasdaq",
+        "nyse",
+        "nyse_american",
+        "nyse_arca",
+        "cboe_bzx",
+        "cboe_byx",
+        "cboe_edga",
+        "cboe_edgx",
+        "iex",
+        "memx",
+        "nasdaq_psx",
+        "ltse"
+      ]
+    },
+    "unsigned_halt": {
+      "accepted": true,
+      "reason": "",
+      "authority": "B_exchange_halt",
+      "signature": "unsigned",
+      "risk_increasing": false
+    },
+    "unsigned_resume": {
+      "accepted": false,
+      "reason": "[NO_SIGNATURE] 未通过签名验证（unsigned）：供应商未提供消息签名（本轮调查结论）",
+      "authority": "B_exchange_halt",
+      "signature": "unsigned",
+      "risk_increasing": true
+    },
+    "asymmetry_holds": true
+  },
+  "determinism": {
+    "runs": 3,
+    "distinct": 1,
+    "sha256": "e89685360d82094ed128656b1a3c6a716965ee1f1d7352b97dc5fd2e658ec8cf",
+    "identical": true
+  }
+}

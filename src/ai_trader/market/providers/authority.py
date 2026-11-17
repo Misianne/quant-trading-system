@@ -35,7 +35,7 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple
 
-from .models import EventAuthority, MarketEvent
+from .models import EventAuthority, HaltEvent, MarketEvent
 
 
 class SignatureStatus(str, Enum):
@@ -85,11 +85,14 @@ class AuthorityVerdict:
     reason: str
     authority: EventAuthority = EventAuthority.UNKNOWN
     signature: SignatureStatus = SignatureStatus.UNSIGNED
+    #: 这条事件是否**放大**风险（恢复交易 = 放大；停牌 = 收敛）
+    risk_increasing: bool = True
 
     def as_dict(self) -> Dict[str, Any]:
         return {"accepted": self.accepted, "reason": self.reason,
                 "authority": self.authority.value,
-                "signature": self.signature.value}
+                "signature": self.signature.value,
+                "risk_increasing": self.risk_increasing}
 
 
 @dataclass
@@ -142,9 +145,23 @@ class AuthorityRouter:
     # ------------------------------------------------------------------ #
     def can_apply(self, ev: MarketEvent, *, symbol: str, exchange: str,
                   now: Optional[datetime] = None,
-                  version: int = 0) -> AuthorityVerdict:
-        """判定一条事件能否改变交易状态。"""
+                  version: int = 0,
+                  risk_increasing: Optional[bool] = None) -> AuthorityVerdict:
+        """判定一条事件能否改变交易状态。
+
+        ``risk_increasing`` 默认按事件方向推断：``HaltEvent(halted=False)``
+        是"恢复交易"，属放大风险；``halted=True`` 是"停止交易"，属收敛风险。
+
+        为什么必须区分：签名要求如果对称地施加，会导致**真实停牌也被拒绝**，
+        于是标的停在"可交易"状态 —— 这是 fail-open，比"恢复被拒"危险得多。
+        正确的不对称策略是：
+
+        * 收敛风险（停牌）：身份/绑定/交易所覆盖全部校验通过即可生效；
+        * 放大风险（恢复）：**额外**要求密码学签名，未签名一律拒绝。
+        """
         now = now or datetime.now(timezone.utc)
+        if risk_increasing is None:
+            risk_increasing = _is_risk_increasing(ev)
         spec = self.specs.get(ev.provider)
 
         if spec is None:
@@ -185,23 +202,27 @@ class AuthorityRouter:
         status, why = self.verifier.verify(ev, {})
         if status is SignatureStatus.INVALID:
             return self._deny(ev, "SIGNATURE_INVALID", why,
-                              signature=status)
-        if self.require_signature_for_resume and status is not SignatureStatus.VERIFIED:
+                              signature=status, risk_increasing=risk_increasing)
+        if (risk_increasing and self.require_signature_for_resume
+                and status is not SignatureStatus.VERIFIED):
+            # 只拦"恢复交易"方向。停牌方向不拦 —— 见 docstring 的不对称说明。
             return self._deny(ev, "NO_SIGNATURE",
                               f"未通过签名验证（{status.value}）：{why}",
-                              signature=status)
+                              signature=status, risk_increasing=risk_increasing)
 
         if version:
             self._applied[(symbol.upper(), exchange.lower())] = version
         self._record(ev, True, "ACCEPTED", status)
-        return AuthorityVerdict(True, "", ev.authority, status)
+        return AuthorityVerdict(True, "", ev.authority, status,
+                                risk_increasing=risk_increasing)
 
     # ------------------------------------------------------------------ #
     def _deny(self, ev: MarketEvent, code: str, message: str,
-              *, signature: SignatureStatus = SignatureStatus.UNSIGNED
-              ) -> AuthorityVerdict:
+              *, signature: SignatureStatus = SignatureStatus.UNSIGNED,
+              risk_increasing: bool = True) -> AuthorityVerdict:
         self._record(ev, False, f"[{code}] {message}", signature)
-        return AuthorityVerdict(False, f"[{code}] {message}", ev.authority, signature)
+        return AuthorityVerdict(False, f"[{code}] {message}", ev.authority,
+                                signature, risk_increasing=risk_increasing)
 
     def _record(self, ev: MarketEvent, ok: bool, reason: str,
                 sig: SignatureStatus) -> None:
@@ -227,6 +248,17 @@ class AuthorityRouter:
 # ---------------------------------------------------------------------- #
 # 预置规格：**只声明已核实的事实**，不声明"可能有"的能力
 # ---------------------------------------------------------------------- #
+def _is_risk_increasing(ev: MarketEvent) -> bool:
+    """事件方向：恢复交易/放宽限制 = True；停止交易/收紧限制 = False。
+
+    不认识的事件类型一律按 ``True``（放大风险）处理 —— 宁可多要一次签名，
+    也不要放过一个可能放宽限制的事件。
+    """
+    if isinstance(ev, HaltEvent):
+        return not bool(ev.halted)
+    return True
+
+
 def surveyed_specs() -> List[ProviderAuthoritySpec]:
     """本轮调查得到的 provider 权威能力（均为未签名）。"""
     return [
@@ -247,7 +279,10 @@ def surveyed_specs() -> List[ProviderAuthoritySpec]:
             notes="NYSE Pillar Security Status 消息；需交易所授权"),
         ProviderAuthoritySpec(
             provider="databento", authority=EventAuthority.EXCHANGE_HALT,
-            exchanges=("nasdaq", "nyse", "arca", "amex", "cboe_bzx"),
+            exchanges=("nasdaq", "nyse", "nyse_american", "nyse_arca",
+                       "cboe_bzx", "cboe_byx", "cboe_edga", "cboe_edgx",
+                       "iex", "memx", "nasdaq_psx", "ltse"),
             native=True, signed=False,
-            notes="status schema 来自交易所原始馈送；无消息签名"),
+            notes="status schema 来自交易所原始馈送；无消息签名；"
+                  "单向放行（停牌可生效，恢复需签名）"),
     ]

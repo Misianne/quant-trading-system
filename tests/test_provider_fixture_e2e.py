@@ -30,6 +30,19 @@ from ai_trader.market.sessions import QuoteUnavailable
 FIX = Path(__file__).resolve().parent / "fixtures" / "marketdata"
 CFG = load_config()
 
+#: 样本固定在 2026-11-16 14:30Z。**必须**把进程时钟钉在样本时间线上：
+#: 否则这些用例会随真实日期漂移 —— 写的时候通过，过一天全部变成"行情过期"。
+FIXTURE_NOW = datetime(2026, 11, 16, 14, 30, 13, tzinfo=timezone.utc)
+
+
+@pytest.fixture(autouse=True)
+def _pin_fixture_clock():
+    from ai_trader.paper_runtime.timebase_bridge import (install_replay_clock,
+                                                         restore_clock)
+    install_replay_clock(FIXTURE_NOW)
+    yield
+    restore_clock()
+
 
 class Verified:
     name = "verified"
@@ -114,14 +127,20 @@ def test_official_halt_blocks_quote():
         feed.quote("AAPL")
 
 
-def test_unsigned_official_halt_is_ignored():
-    """没有签名 → 即使 provider 是交易所原生，也不得改状态。"""
-    rows = [{"symbol": "AAPL", "action": "H", "reason": "LUDP",
-             "timestamp": int(datetime(2026, 11, 16, 14, 30,
-                                       tzinfo=timezone.utc).timestamp() * 1e9),
-             "sequence": 1, "id": "1"}]
+def test_unsigned_resume_cannot_clear_halt():
+    """没有签名 → **恢复交易**不得生效，停牌状态必须保持。
+
+    停牌本身（收敛风险）不要求签名，见 ``test_unsigned_official_halt_takes_effect``。
+    """
+    t = int(datetime(2026, 11, 16, 14, 30, tzinfo=timezone.utc).timestamp() * 1e9)
+    rows = [
+        {"symbol": "AAPL", "action": "H", "reason": "LUDP",
+         "timestamp": t, "sequence": 1, "id": "1"},
+        {"symbol": "AAPL", "action": "T", "reason": "",
+         "timestamp": t + 300 * 10**9, "sequence": 2, "id": "2"},
+    ]
     f = Path(__import__("tempfile").mkdtemp()) / "n.jsonl"
-    f.write_text(json.dumps(rows[0]) + "\n", encoding="utf-8")
+    f.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
     p = NasdaqItchProvider(f, {"batch_size": 5})
     router = AuthorityRouter(
         [ProviderAuthoritySpec("nasdaq_itch", EventAuthority.EXCHANGE_HALT,
@@ -129,8 +148,25 @@ def test_unsigned_official_halt_is_ignored():
         verifier=NoSignatureVerifier())
     feed = ProviderFeed([p], authority_router=router)
     feed.connect_all(); feed.subscribe(["AAPL"]); feed.poll()
-    assert feed.state("AAPL").halted is False
+    assert feed.state("AAPL").halted is True, "未签名恢复事件解除了停牌"
     assert feed.rejected.get("halt_not_authoritative", 0) >= 1
+
+
+def test_unsigned_official_halt_takes_effect():
+    """未签名的**停牌**必须生效 —— 拒绝它等于让标的保持可交易（fail-open）。"""
+    t = int(datetime(2026, 11, 16, 14, 30, tzinfo=timezone.utc).timestamp() * 1e9)
+    f = Path(__import__("tempfile").mkdtemp()) / "n.jsonl"
+    f.write_text(json.dumps({"symbol": "AAPL", "action": "H", "reason": "LUDP",
+                             "timestamp": t, "sequence": 1, "id": "1"}) + "\n",
+                 encoding="utf-8")
+    p = NasdaqItchProvider(f, {"batch_size": 5})
+    router = AuthorityRouter(
+        [ProviderAuthoritySpec("nasdaq_itch", EventAuthority.EXCHANGE_HALT,
+                               exchanges=("nasdaq",), native=True, signed=True)],
+        verifier=NoSignatureVerifier())
+    feed = ProviderFeed([p], authority_router=router)
+    feed.connect_all(); feed.subscribe(["AAPL"]); feed.poll()
+    assert feed.state("AAPL").halted is True
 
 
 def test_paper_broker_blocks_fill_during_official_halt():

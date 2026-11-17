@@ -413,10 +413,14 @@ def test_aggregation_only_tightens_never_loosens():
     r = svc.observe_trade("AAPL", 80.0, t, bounds=b, prior_close=100.0)
     assert r.state is MarketState.LULD_LIMIT_STATE
 
-    st = svc.status("AAPL", exchange="nasdaq")
+    # 必须显式给 now：默认取墙钟，而 T0 是固定的历史时间，
+    # 隔一天再跑就会因为"行情过期"变成 DATA_STALE —— 那是时间漂移，
+    # 不是本用例要断言的聚合语义。
+    st = svc.status("AAPL", t + timedelta(seconds=1), exchange="nasdaq")
     assert st.state is MarketState.LULD_LIMIT_STATE
     assert st.tradable is False
-    ok, why, _ = svc.fill_allowed("AAPL", exchange="nasdaq", price=80.0)
+    ok, why, _ = svc.fill_allowed("AAPL", t + timedelta(seconds=1),
+                                 exchange="nasdaq", price=80.0)
     assert ok is False and "越出带" in why
 
 

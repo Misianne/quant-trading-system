@@ -64,6 +64,18 @@ class QualityFlag(str, Enum):
     SEQUENCE_REGRESSION = "sequence_regression"
     PROVIDER_DOWN = "provider_down"
     NO_AUTHORITY = "no_authority"
+    #: schema / 字段形状不认识（例如 rtype 未知）—— 不能当"没数据"吞掉
+    UNKNOWN_SCHEMA = "unknown_schema"
+    #: 缺少 symbology（只有 instrument_id，没有 symbol）—— 解析不出标的
+    MISSING_SYMBOLOGY = "missing_symbology"
+    #: 价格是 UNDEF_PRICE 哨兵或无意义值
+    PRICE_UNDEFINED = "price_undefined"
+    #: 状态语义无法区分（典型：NOT_AVAILABLE_FOR_TRADING 既可能是收盘也可能是停牌）
+    AMBIGUOUS_STATUS = "ambiguous_status"
+    #: 字段取值不在官方枚举内（例如未来新增的 action / reason）
+    UNKNOWN_ENUM = "unknown_enum"
+    #: 供应商给了本项目不解析的 schema（如 mbp-10）
+    SCHEMA_UNSUPPORTED = "schema_unsupported"
 
 
 class SessionPhase(str, Enum):
@@ -80,6 +92,19 @@ BLOCKING_FLAGS = frozenset({
     QualityFlag.STALE, QualityFlag.FUTURE, QualityFlag.NAIVE_TIME,
     QualityFlag.UNKNOWN_SYMBOL, QualityFlag.EXCHANGE_MISMATCH,
     QualityFlag.SEQUENCE_REGRESSION, QualityFlag.PROVIDER_DOWN,
+    # 价格/标的/记录类型层面的问题：这条数据**不能当价格用**。
+    QualityFlag.UNKNOWN_SCHEMA, QualityFlag.MISSING_SYMBOLOGY,
+    QualityFlag.PRICE_UNDEFINED, QualityFlag.SCHEMA_UNSUPPORTED,
+})
+
+#: 只记录、**不丢弃**的标记。
+#:
+#: 为什么必须与 BLOCKING_FLAGS 分开：一个"我不知道这算不算停牌"的事件，
+#: 语义上是在往**更保守**的方向指（不可交易）。把它丢掉，等于让标的停在
+#: "可交易"的旧状态里 —— 那是 fail-open。所以这类事件必须被摄取，
+#: 由权威层决定它够不够格改变状态，而不是由质量层把它删掉。
+ADVISORY_FLAGS = frozenset({
+    QualityFlag.AMBIGUOUS_STATUS, QualityFlag.UNKNOWN_ENUM,
 })
 
 
@@ -161,11 +186,17 @@ class TradeEvent(MarketEvent):
     price: float = 0.0
     size: float = 0.0
     conditions: List[str] = field(default_factory=list)
+    #: 主动方：``A``（卖方主动）/ ``B``（买方主动）/ ``N``（未指定）
+    side: str = ""
+    #: 原始 price 的标度：``fixed_1e-9``（DBN 定点）或 ``float``（已转）
+    #: 保留它是为了能证明"没有把定点数当美元价、也没有二次除以 1e9"。
+    price_scale: str = ""
 
     def as_dict(self) -> Dict[str, Any]:
         d = super().as_dict()
         d.update({"price": self.price, "size": self.size,
-                  "conditions": list(self.conditions)})
+                  "conditions": list(self.conditions),
+                  "side": self.side, "price_scale": self.price_scale})
         return d
 
 
@@ -197,13 +228,24 @@ class HaltEvent(MarketEvent):
     reason: str = ""
     halt_code: str = ""
     expected_resume: Optional[datetime] = None
+    #: 官方 ``is_trading`` / ``is_quoting`` / ``is_short_sell_restricted``
+    #: 三态。``None`` 表示官方给了 ``~``（未知），**不等于 False**。
+    is_trading: Optional[bool] = None
+    is_quoting: Optional[bool] = None
+    ssr_restricted: Optional[bool] = None
+    #: 官方 ``trading_event`` 代码名（如 CHANGE_TRADING_SESSION）
+    trading_event: str = ""
 
     def as_dict(self) -> Dict[str, Any]:
         d = super().as_dict()
         d.update({"halted": self.halted, "reason": self.reason,
                   "halt_code": self.halt_code,
                   "expected_resume": self.expected_resume.isoformat()
-                  if self.expected_resume else None})
+                  if self.expected_resume else None,
+                  "is_trading": self.is_trading,
+                  "is_quoting": self.is_quoting,
+                  "ssr_restricted": self.ssr_restricted,
+                  "trading_event": self.trading_event})
         return d
 
 
@@ -249,6 +291,11 @@ class ProviderHealth:
     duplicate: int = 0
     out_of_order: int = 0
     subscribed: int = 0
+    #: 按原因分类的丢弃计数。只给一个总数是不够的 ——
+    #: "符号缺失 900 条"和"重复 900 条"是完全不同的故障。
+    rejected: Dict[str, int] = field(default_factory=dict)
+    #: 解析时抛异常的条数（字段形状与预期不符）
+    parse_errors: int = 0
     capabilities: Dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -265,4 +312,6 @@ class ProviderHealth:
                 "gaps": self.gaps, "duplicate": self.duplicate,
                 "out_of_order": self.out_of_order,
                 "subscribed": self.subscribed,
+                "rejected": dict(self.rejected),
+                "parse_errors": self.parse_errors,
                 "capabilities": dict(self.capabilities)}
