@@ -1,0 +1,43 @@
+{
+  "probed_at": "2026-11-17T14:51:18+00:00",
+  "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36",
+  "note": "官方公开端点原始响应；未使用付费 key、未提交注册。",
+  "probes": {
+    "twelvedata.time_series.QQQ": {
+      "url": "https://api.twelvedata.com/time_series?symbol=QQQ&interval=1day&outputsize=2&apikey=demo",
+      "raw": "{\"meta\":{\"symbol\":\"QQQ\",\"interval\":\"1day\",\"currency\":\"USD\",\"exchange_timezone\":\"America/New_York\",\"exchange\":\"NASDAQ\",\"mic_code\":\"XNMS\",\"type\":\"ETF\"},\"values\":[{\"datetime\":\"2026-11-17\",\"open\":\"663.08\",\"high\":\"663.35\",\"low\":\"659.85\",\"close\":\"661.02\",\"volume\":\"38959\"},{\"datetime\":\"2026-11-16\",\"open\":\"671.039978\",\"high\":\"672.15002\",\"low\":\"660.47998\",\"close\":\"661.75\",\"volume\":\"42801200\"}],\"status\":\"ok\"}"
+    },
+    "twelvedata.time_series.AAPL": {
+      "url": "https://api.twelvedata.com/time_series?symbol=AAPL&interval=1day&outputsize=2&apikey=demo",
+      "raw": "{\"meta\":{\"symbol\":\"AAPL\",\"interval\":\"1day\",\"currency\":\"USD\",\"exchange_timezone\":\"America/New_York\",\"exchange\":\"NASDAQ\",\"mic_code\":\"XNGS\",\"type\":\"Common Stock\"},\"values\":[{\"datetime\":\"2026-11-17\",\"open\":\"352.755\",\"high\":\"353.98\",\"low\":\"351.89\",\"close\":\"353.4\",\"volume\":\"101396\"},{\"datetime\":\"2026-11-16\",\"open\":\"357.13000\",\"high\":\"357.13000\",\"low\":\"351.31000\",\"close\":\"352.78000\",\"volume\":\"45945500\"}],\"status\":\"ok\"}"
+    },
+    "twelvedata.time_series.QLD": {
+      "url": "https://api.twelvedata.com/time_series?symbol=QLD&interval=1day&outputsize=2&apikey=demo",
+      "raw": "{\"code\":401,\"message\":\"The 'demo' API key is only used for initial familiarity. To become a full user, you can request your own API key at https://twelvedata.com/pricing. It is absolutely free, and it’s yours for a lifetime. It only takes 10 seconds to obtain your own API key!\",\"status\":\"error\"}"
+    },
+    "twelvedata.time_series.QID": {
+      "url": "https://api.twelvedata.com/time_series?symbol=QID&interval=1day&outputsize=2&apikey=demo",
+      "raw": "{\"code\":401,\"message\":\"The 'demo' API key is only used for initial familiarity. To become a full user, you can request your own API key at https://twelvedata.com/pricing. It is absolutely free, and it’s yours for a lifetime. It only takes 10 seconds to obtain your own API key!\",\"status\":\"error\"}"
+    },
+    "twelvedata.time_series.TQQQ": {
+      "url": "https://api.twelvedata.com/time_series?symbol=TQQQ&interval=1day&outputsize=2&apikey=demo",
+      "raw": "{\"code\":401,\"message\":\"The 'demo' API key is only used for initial familiarity. To become a full user, you can request your own API key at https://twelvedata.com/pricing. It is absolutely free, and it’s yours for a lifetime. It only takes 10 seconds to obtain your own API key!\",\"status\":\"error\"}"
+    },
+    "twelvedata.time_series.NDX": {
+      "url": "https://api.twelvedata.com/time_series?symbol=NDX&interval=1day&outputsize=2&apikey=demo",
+      "raw": "{\"code\":401,\"message\":\"The 'demo' API key is only used for initial familiarity. To become a full user, you can request your own API key at https://twelvedata.com/pricing. It is absolutely free, and it’s yours for a lifetime. It only takes 10 seconds to obtain your own API key!\",\"status\":\"error\"}"
+    },
+    "marketstack.no_key": {
+      "url": "https://api.marketstack.com/v1/eod?symbols=QQQ",
+      "raw": "{\n  \"error\": {\n    \"code\": \"missing_access_key\",\n    \"message\": \"You have not supplied an API Access Key. [Required format: access_key=YOUR_ACCESS_KEY]\"\n  }\n}\n"
+    },
+    "fmp.demo_key": {
+      "url": "https://financialmodelingprep.com/api/v3/historical-price-full/QQQ?apikey=demo",
+      "raw": "{\n  \"Error Message\": \"Invalid API KEY. Feel free to create a Free API Key or visit https://site.financialmodelingprep.com/faqs?search=why-is-my-api-key-invalid for more information.\"\n}"
+    },
+    "nasdaqdatalink.no_key": {
+      "url": "https://data.nasdaq.com/api/v3/datasets/WIKI/AAPL.json?rows=2",
+      "raw": "<html style=\"height:100%\"><head><META NAME=\"ROBOTS\" CONTENT=\"NOINDEX, NOFOLLOW\"><meta name=\"format-detection\" content=\"telephone=no\"><meta name=\"viewport\" content=\"initial-scale=1.0\"><meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge,chrome=1\"></head><body style=\"margin:0px;height:100%\"><iframe id=\"main-iframe\" src=\"/_Incapsula_Resource?CWUDNSAI=23&xinfo=45-11537196-0%200NNN%20RT%281794927098587%20875%29%20q%280%20-1%20-1%20-1%29%20r%280%20-1%29%20B15%2811%2c3946258%2c0%29%20U18&incident_id=413000410084104324-60021115721681517&edet=15&cinfo=0b000000&rpinfo=0&cip=47.88.58.181&mth=GET\" frameborder=0 width=\"100%\" height=\"100%\" marginheight=\"0px\" marginwidth=\"0px\">Request unsuccessful. Incapsula incident ID: 413000410084104324-60021115721681517</iframe></body></html>"
+    }
+  }
+}

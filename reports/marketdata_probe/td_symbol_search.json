@@ -1,0 +1,252 @@
+{
+  "NDX": [
+    {
+      "symbol": "NDX",
+      "name": "Nordex SE - Unsponsored ADR",
+      "exch": "FSX",
+      "type": "American Depositary Receipt",
+      "mic": "XFRA",
+      "ccy": "EUR"
+    },
+    {
+      "symbol": "NDX1",
+      "name": "Nordex SE",
+      "exch": "XETR",
+      "type": "Common Stock",
+      "mic": "XETR",
+      "ccy": "EUR"
+    },
+    {
+      "symbol": "NDX1",
+      "name": "Nordex SE",
+      "exch": "XSTU",
+      "type": "Common Stock",
+      "mic": "XSTU",
+      "ccy": "EUR"
+    },
+    {
+      "symbol": "NDX1",
+      "name": "Nordex SE",
+      "exch": "FSX",
+      "type": "Common Stock",
+      "mic": "XFRA",
+      "ccy": "EUR"
+    },
+    {
+      "symbol": "NDX1",
+      "name": "Nordex SE",
+      "exch": "XDUS",
+      "type": "Common Stock",
+      "mic": "XDUS",
+      "ccy": "EUR"
+    },
+    {
+      "symbol": "NDX1",
+      "name": "Nordex SE",
+      "exch": "XHAN",
+      "type": "Common Stock",
+      "mic": "XHAN",
+      "ccy": "EUR"
+    }
+  ],
+  "QQQ": [
+    {
+      "symbol": "QQQ",
+      "name": "Invesco QQQ Trust, Series 1",
+      "exch": "NASDAQ",
+      "type": "ETF",
+      "mic": "XNMS",
+      "ccy": "USD"
+    },
+    {
+      "symbol": "QQQ",
+      "name": "Invesco QQQ Trust, Series 1 CEDEAR",
+      "exch": "BCBA",
+      "type": "ETF",
+      "mic": "XBUE",
+      "ccy": "ARS"
+    },
+    {
+      "symbol": "QQQ",
+      "name": "Invesco QQQ Trust, Series 1",
+      "exch": "BMV",
+      "type": "ETF",
+      "mic": "XMEX",
+      "ccy": "MXN"
+    },
+    {
+      "symbol": "QQQ",
+      "name": "Questcorp Mining Inc.",
+      "exch": "CSE",
+      "type": "Common Stock",
+      "mic": "XCNQ",
+      "ccy": "CAD"
+    },
+    {
+      "symbol": "QQQ",
+      "name": "Questcorp Mining Inc.",
+      "exch": "NEO",
+      "type": "Common Stock",
+      "mic": "NEOE",
+      "ccy": "CAD"
+    },
+    {
+      "symbol": "QQQ",
+      "name": "Invesco QQQ Trust, Series 1",
+      "exch": "IEX",
+      "type": "ETF",
+      "mic": "IEXG",
+      "ccy": "USD"
+    }
+  ],
+  "QLD": [
+    {
+      "symbol": "QLD",
+      "name": "ProShares Ultra QQQ",
+      "exch": "NYSE",
+      "type": "ETF",
+      "mic": "ARCX",
+      "ccy": "USD"
+    },
+    {
+      "symbol": "QLD",
+      "name": "ProShares Ultra QQQ",
+      "exch": "BMV",
+      "type": "ETF",
+      "mic": "XMEX",
+      "ccy": "MXN"
+    },
+    {
+      "symbol": "QLD",
+      "name": "ProShares Ultra QQQ",
+      "exch": "IEX",
+      "type": "ETF",
+      "mic": "IEXG",
+      "ccy": "USD"
+    },
+    {
+      "symbol": "QLDN",
+      "name": "Elysee Development Corp.",
+      "exch": "FSX",
+      "type": "Common Stock",
+      "mic": "XFRA",
+      "ccy": "EUR"
+    },
+    {
+      "symbol": "QLDN",
+      "name": "Elysee Development Corp.",
+      "exch": "XSTU",
+      "type": "Common Stock",
+      "mic": "XSTU",
+      "ccy": "EUR"
+    },
+    {
+      "symbol": "QLDN",
+      "name": "Elysee Development Corp.",
+      "exch": "XDUS",
+      "type": "Common Stock",
+      "mic": "XDUS",
+      "ccy": "EUR"
+    }
+  ],
+  "QID": [
+    {
+      "symbol": "QID",
+      "name": "ProShares UltraShort QQQ",
+      "exch": "NYSE",
+      "type": "ETF",
+      "mic": "ARCX",
+      "ccy": "USD"
+    },
+    {
+      "symbol": "QID",
+      "name": "ProShares UltraShort QQQ",
+      "exch": "IEX",
+      "type": "ETF",
+      "mic": "IEXG",
+      "ccy": "USD"
+    },
+    {
+      "symbol": "QIDX",
+      "name": "Indexperts Quality Earnings Focused ETF",
+      "exch": "NYSE",
+      "type": "ETF",
+      "mic": "ARCX",
+      "ccy": "USD"
+    },
+    {
+      "symbol": "QIDX",
+      "name": "Indexperts Quality Earnings Focused ETF",
+      "exch": "IEX",
+      "type": "ETF",
+      "mic": "IEXG",
+      "ccy": "USD"
+    },
+    {
+      "symbol": "0P000151P4",
+      "name": "BlueBay Funds - BlueBay Total Return Credit Fund C - USD (QID)",
+      "exch": "OTC",
+      "type": "Mutual Fund",
+      "mic": "OTCM",
+      "ccy": "USD"
+    },
+    {
+      "symbol": "0P0001RR4M",
+      "name": "BlueBay High Yield ESG Bond V USD (QID)",
+      "exch": "OTC",
+      "type": "Mutual Fund",
+      "mic": "PINX",
+      "ccy": "USD"
+    }
+  ],
+  "TQQQ": [
+    {
+      "symbol": "TQQQ",
+      "name": "ProShares UltraPro QQQ",
+      "exch": "NASDAQ",
+      "type": "ETF",
+      "mic": "XNMS",
+      "ccy": "USD"
+    },
+    {
+      "symbol": "TQQQ",
+      "name": "ProShares UltraPro QQQ",
+      "exch": "BCBA",
+      "type": "ETF",
+      "mic": "XBUE",
+      "ccy": "ARS"
+    },
+    {
+      "symbol": "TQQQ",
+      "name": "ProShares UltraPro QQQ",
+      "exch": "BMV",
+      "type": "ETF",
+      "mic": "XMEX",
+      "ccy": "MXN"
+    },
+    {
+      "symbol": "TQQQ",
+      "name": "BetaPro 3X Nasdaq-100 Daily Bull ETF",
+      "exch": "TSX",
+      "type": "ETF",
+      "mic": "XTSE",
+      "ccy": "CAD"
+    },
+    {
+      "symbol": "TQQQ",
+      "name": "Betapro 3x Nasdaq-100 Daily Leveraged ETF",
+      "exch": "NEO",
+      "type": "ETF",
+      "mic": "NEOE",
+      "ccy": "CAD"
+    },
+    {
+      "symbol": "TQQQ",
+      "name": "ProShares UltraPro QQQ",
+      "exch": "IEX",
+      "type": "ETF",
+      "mic": "IEXG",
+      "ccy": "USD"
+    }
+  ]
+}
