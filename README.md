@@ -4,11 +4,30 @@
 
 面向港股、美股、A股通，把「AI 判断 → 独立风控 → 下单 → 审计」串成一条**可审计、可阻断、默认不碰真钱**的链路。
 
-> **当前状态：模拟盘已跑通，真实交易未开通。**
-> 没有真实 API 凭证，因此**未连接券商、未读取任何真实账户**。
-> 2026-11-08 已完成 P0/P1 全部安全修复（订单状态完整性、急停持久化、持仓/盈亏 fail-closed、超时与撤单、跨进程去重、重连对账、**AI 决策权威**、**仅回环监听**），详见 [FIX_REPORT.md](FIX_REPORT.md) 与 [NEXT_PHASE_REPORT.md](NEXT_PHASE_REPORT.md)。
+> **当前状态：仅历史回测与模拟盘。真实交易从未开启，也未验证过盈利能力。**
+> 四道开关全部关闭：`live_trading=false`、`order_execution_enabled=false`、
+> `us_phase2.enabled=false`、`market_feed.enabled=false`。仓库内**没有任何真实凭据**，
+> 因此从未连接券商、未读取真实账户、未提交过真实订单。
+
+### 研发阶段（截至 2026-11-20）
+
+| 阶段 | 内容 | 结论 |
+|---|---|---|
+| P0 / P1 | 订单状态完整性、急停持久化、持仓盈亏 fail-closed、重连对账、AI 决策权威、仅回环监听 | 已修复，见 [FIX_REPORT.md](FIX_REPORT.md) |
+| 行情源审计 | 星财富 OpenAPI REST / WebSocket 实测 | WS 订阅被服务端 `denied`（账户未开通实时行情权限），代码保留、默认关闭 |
+| 日线波段架构 | 用已完成日线替代实时推送 | 已实现；**回测跑不过买入持有**（详见 [US_DAILY_SWING_ARCHITECTURE_REPORT.md](US_DAILY_SWING_ARCHITECTURE_REPORT.md)） |
+| 宏观数据库 | 12 条 FRED 序列、104,854 个版本行、点时间查询 | 已建成，见 [docs/macro_db.md](docs/macro_db.md) |
+| 宏观研究 | 6 状态分类 × QQQ 前瞻收益（60 个月末决策） | **未发现显著增量价值**，见 [reports/macro_research/macro_regime_research.md](reports/macro_research/macro_regime_research.md) |
+| 事件情报层 | 官方事件时间模型 + 事件研究 | 免费源**没有发布级一致预期**，因此只能做风控、不能做方向，见 [reports/market_research/expectations_event_sources.md](reports/market_research/expectations_event_sources.md) |
+
+> **验证边界（请务必读完再判断这个项目）**
+> 1. 没有实盘记录，**没有任何真实盈亏数据**；
+> 2. 日线策略的结论是**负面的**（跑不过买入持有），不是"待优化"；
+> 3. 宏观层的结论也是**负面的**（p 值全部不显著，唯一显著的只有"事件日波动更大"）；
+> 4. 回测使用未复权收盘价（拆股已调整、分红未调整），且只覆盖 2021-11 起的 5 年；
+> 5. 未做交易成本之外的滑点建模，未考虑杠杆 ETF 的每日复位损耗之外的费用。
 >
-> ⚠️ **注意**：未配置 AI 时系统只做分析、**不会开仓**（规则引擎无开仓决策权）。要交易必须先配置 `AI_API_KEY`。
+> ⚠️ **未配置 AI 时系统只做分析、不会开仓**（规则引擎无开仓决策权）。
 
 ---
 
@@ -256,3 +275,17 @@ safety:
 - 本项目是**工程脚手架**，不是投资建议，也不保证策略盈利。
 - 合成行情仅用于打通链路，任何基于它的收益数字都没有参考价值。
 - 真实交易前必须自行完成：开放平台权限申请、合规审查、小资金灰度、至少一个完整交易日的只读观察。
+
+---
+
+## 10. 许可证
+
+本项目以 **Apache License 2.0** 发布，全文见 [LICENSE](LICENSE)。
+
+- 允许商业使用、修改、分发，需保留版权与许可声明；
+- 若修改后分发，需说明修改内容；
+- 附带专利授权；
+- **不提供任何担保**，尤其不担保本项目的策略能盈利。
+
+第三方依赖仍归各自作者所有（见 `requirements.txt` 与 `pyproject.toml`）。
+券商 OpenAPI 的 Python SDK 不在本仓库内，需自行从官方渠道获取。
