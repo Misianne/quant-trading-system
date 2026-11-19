@@ -1,0 +1,176 @@
+{
+  "as_of": "2026-10-31T03:59:59+00:00",
+  "state": "CONTRADICTORY",
+  "label": "经济增长与通胀信号相互矛盾",
+  "sections": [
+    {
+      "key": "environment",
+      "title": "当前宏观环境",
+      "status": "fact",
+      "content": [
+        "状态判定：经济增长与通胀信号相互矛盾（CONTRADICTORY）",
+        "通胀方向：mixed（投票 +1）；增长方向：resilient（投票 +3）",
+        "政策环境：neutral，名义利率 3.88%，实际利率 +0.16pp"
+      ],
+      "sources": [
+        "CPIAUCSL 2026-09-01（vintage 2026-10-14（date））",
+        "PAYEMS 2026-09-01（vintage 2026-10-02（date））",
+        "GDP 2026-07-01（vintage 2026-10-29（date））"
+      ],
+      "missing": []
+    },
+    {
+      "key": "changes",
+      "title": "关键变化",
+      "status": "fact",
+      "content": [
+        "[通胀] CPIAUCSL: 同比 3.72%，3m 变化 +0.25pp，3m 折年 4.56%",
+        "[增长] PAYEMS: 3m 均值 51k / 12m 均值 41k = 1.23",
+        "[增长] UNRATE: 4.2% → 4.2%（3m +0.0pp）",
+        "[增长] GDP: 实际同比(CPI 平减) 2.48%"
+      ],
+      "sources": [
+        "CPIAUCSL 2026-09-01（vintage 2026-10-14（date））",
+        "CPILFESL 2026-09-01（vintage 2026-10-14（date））",
+        "PCEPI 2026-09-01（vintage 2026-10-29（date））",
+        "PCEPILFE 2026-09-01（vintage 2026-10-29（date））",
+        "PAYEMS 2026-09-01（vintage 2026-10-02（date））",
+        "UNRATE 2026-09-01（vintage 2026-10-02（date））",
+        "GDP 2026-07-01（vintage 2026-10-29（date））"
+      ],
+      "missing": []
+    },
+    {
+      "key": "impact",
+      "title": "对纳指 100 的潜在影响",
+      "status": "inferred",
+      "content": [
+        "该状态出现 38 个月，20 日均值 +1.57%，与全样本 +1.06% 无显著差异（p=0.397）；「矛盾」意味着**不指向任何方向**，不是看空或看多"
+      ],
+      "sources": [
+        "reports/macro_research/macro_regime_research.md"
+      ],
+      "missing": [
+        "未做因果识别，不能把条件相关当作驱动因素"
+      ]
+    },
+    {
+      "key": "positives",
+      "title": "正面因素",
+      "status": "fact",
+      "content": [
+        "[增长] PAYEMS: 3m 均值 51k / 12m 均值 41k = 1.23 — 就业动能未明显衰减",
+        "[增长] UNRATE: 4.2% → 4.2%（3m +0.0pp） — 失业率未恶化",
+        "[增长] GDP: 实际同比(CPI 平减) 2.48% — 实际产出仍在扩张"
+      ],
+      "sources": [
+        "CPIAUCSL 2026-09-01（vintage 2026-10-14（date））",
+        "CPILFESL 2026-09-01（vintage 2026-10-14（date））",
+        "PCEPI 2026-09-01（vintage 2026-10-29（date））",
+        "PCEPILFE 2026-09-01（vintage 2026-10-29（date））",
+        "PAYEMS 2026-09-01（vintage 2026-10-02（date））",
+        "UNRATE 2026-09-01（vintage 2026-10-02（date））",
+        "GDP 2026-07-01（vintage 2026-10-29（date））"
+      ],
+      "missing": []
+    },
+    {
+      "key": "negatives",
+      "title": "负面因素",
+      "status": "fact",
+      "content": [
+        "本库口径本期未检测到反向的方向性证据（不等于安全，只等于没被这 8 条序列捕捉到）"
+      ],
+      "sources": [
+        "CPIAUCSL 2026-09-01（vintage 2026-10-14（date））",
+        "CPILFESL 2026-09-01（vintage 2026-10-14（date））",
+        "PCEPI 2026-09-01（vintage 2026-10-29（date））",
+        "PCEPILFE 2026-09-01（vintage 2026-10-29（date））",
+        "PAYEMS 2026-09-01（vintage 2026-10-02（date））",
+        "UNRATE 2026-09-01（vintage 2026-10-02（date））",
+        "GDP 2026-07-01（vintage 2026-10-29（date））"
+      ],
+      "missing": []
+    },
+    {
+      "key": "priced_in",
+      "title": "市场可能已经计价的部分",
+      "status": "unverifiable",
+      "content": [
+        "本库没有一致预期、持仓、资金流或新闻数据，**无法判断市场计价程度**"
+      ],
+      "sources": [],
+      "missing": [
+        "一致预期（如 CPI 预期中位数）",
+        "持仓/资金流数据",
+        "事件窗口内的新闻与公告"
+      ]
+    },
+    {
+      "key": "not_priced",
+      "title": "尚未计价或无法确认的部分",
+      "status": "unverifiable",
+      "content": [
+        "同上：缺少预期与持仓数据，无法区分「已反映」与「未反映」",
+        "数据版本风险：本期读数若被后续修订改变方向，本判定需重做（见 §9）"
+      ],
+      "sources": [],
+      "missing": [
+        "后续修订值（尚未发生）",
+        "预期与实际之差（surprise）"
+      ]
+    },
+    {
+      "key": "confidence",
+      "title": "置信度",
+      "status": "fact",
+      "content": [
+        "low（由两块投票强度与数据新鲜度决定）",
+        "两块信号方向不一致或块内指标互相矛盾，本状态不指向任何单一结论"
+      ],
+      "sources": [
+        "CPIAUCSL 2026-09-01（vintage 2026-10-14（date））",
+        "CPILFESL 2026-09-01（vintage 2026-10-14（date））",
+        "PCEPI 2026-09-01（vintage 2026-10-29（date））",
+        "PCEPILFE 2026-09-01（vintage 2026-10-29（date））",
+        "PAYEMS 2026-09-01（vintage 2026-10-02（date））",
+        "UNRATE 2026-09-01（vintage 2026-10-02（date））",
+        "GDP 2026-07-01（vintage 2026-10-29（date））"
+      ],
+      "missing": []
+    },
+    {
+      "key": "invalidators",
+      "title": "判断失效条件",
+      "status": "fact",
+      "content": [
+        "非农 3 个月均值跌破 12 个月均值的 0.45 倍，或失业率 3 个月上行 ≥0.3pp，或 Sahm 规则触发 → 判定经济韧性失效",
+        "数据版本被修订：若同一期的首次公布值与当前值方向相反，该期证据需重新评估（本判定只使用决策时点可见的版本）"
+      ],
+      "sources": [],
+      "missing": []
+    },
+    {
+      "key": "sources",
+      "title": "信息来源与发布时间",
+      "status": "fact",
+      "content": [
+        "CPIAUCSL: 观测期 2026-09-01，版本 2026-10-14（date）",
+        "CPILFESL: 观测期 2026-09-01，版本 2026-10-14（date）",
+        "GDP: 观测期 2026-07-01，版本 2026-10-29（date）",
+        "PAYEMS: 观测期 2026-09-01，版本 2026-10-02（date）",
+        "PCEPI: 观测期 2026-09-01，版本 2026-10-29（date）",
+        "PCEPILFE: 观测期 2026-09-01，版本 2026-10-29（date）",
+        "UNRATE: 观测期 2026-09-01，版本 2026-10-02（date）"
+      ],
+      "sources": [],
+      "missing": [
+        "发布时刻只到日粒度；不是精确到分钟的发布时间"
+      ]
+    }
+  ],
+  "unverifiable_sections": [
+    "priced_in",
+    "not_priced"
+  ]
+}
