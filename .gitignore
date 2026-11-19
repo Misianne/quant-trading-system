@@ -67,3 +67,6 @@ data/collect.txt
 
 # ---- 本轮临时测试产物（JUnit XML / 部署暂存）----
 .tmp_test/
+
+# ---- 宏观库原始响应归档（12MB，可由 tools/macro_ingest.py 重新取回）----
+data/macro_raw/

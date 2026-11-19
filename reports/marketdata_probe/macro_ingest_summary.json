@@ -1,0 +1,164 @@
+{
+  "generated_at": "2026-11-19T08:25:51+00:00",
+  "db": "data/macro_data.db",
+  "counts": {
+    "macro_series": 12,
+    "macro_observations": 104854,
+    "macro_releases": 104854,
+    "macro_raw_responses": 61,
+    "macro_ingest_log": 15
+  },
+  "note": "由 macro_ingest_log 汇总（该表是入库审计记录，不是估算）；早期被中断的一次运行只在库里留下 failed/killed 的痕迹，不影响数据。",
+  "tasks": [
+    {
+      "task_id": "ingest-20261119T155800",
+      "series_id": "CPIAUCSL",
+      "started_at": "2026-11-19T07:58:00+00:00",
+      "finished_at": "2026-11-19T07:58:06+00:00",
+      "rows_inserted": 3058,
+      "rows_updated": 0,
+      "status": "ok",
+      "error_message": null
+    },
+    {
+      "task_id": "ingest-20261119T155800",
+      "series_id": "CPILFESL",
+      "started_at": "2026-11-19T07:58:06+00:00",
+      "finished_at": "2026-11-19T07:58:16+00:00",
+      "rows_inserted": 1782,
+      "rows_updated": 0,
+      "status": "ok",
+      "error_message": null
+    },
+    {
+      "task_id": "ingest-20261119T155800",
+      "series_id": "PCEPI",
+      "started_at": "2026-11-19T07:58:16+00:00",
+      "finished_at": "2026-11-19T07:58:31+00:00",
+      "rows_inserted": 7669,
+      "rows_updated": 0,
+      "status": "ok",
+      "error_message": null
+    },
+    {
+      "task_id": "ingest-20261119T155800",
+      "series_id": "PCEPILFE",
+      "started_at": "2026-11-19T07:58:31+00:00",
+      "finished_at": "2026-11-19T07:58:44+00:00",
+      "rows_inserted": 7709,
+      "rows_updated": 0,
+      "status": "ok",
+      "error_message": null
+    },
+    {
+      "task_id": "ingest-20261119T155800",
+      "series_id": "PAYEMS",
+      "started_at": "2026-11-19T07:58:44+00:00",
+      "finished_at": "2026-11-19T07:59:08+00:00",
+      "rows_inserted": 13642,
+      "rows_updated": 0,
+      "status": "ok",
+      "error_message": null
+    },
+    {
+      "task_id": "ingest-20261119T155800",
+      "series_id": "UNRATE",
+      "started_at": "2026-11-19T07:59:08+00:00",
+      "finished_at": "2026-11-19T07:59:20+00:00",
+      "rows_inserted": 2053,
+      "rows_updated": 0,
+      "status": "ok",
+      "error_message": null
+    },
+    {
+      "task_id": "ingest-20261119T155800",
+      "series_id": "CES0500000003",
+      "started_at": "2026-11-19T07:59:20+00:00",
+      "finished_at": "2026-11-19T07:59:26+00:00",
+      "rows_inserted": 1485,
+      "rows_updated": 0,
+      "status": "ok",
+      "error_message": null
+    },
+    {
+      "task_id": "ingest-20261119T155800",
+      "series_id": "GDP",
+      "started_at": "2026-11-19T07:59:26+00:00",
+      "finished_at": "2026-11-19T07:59:35+00:00",
+      "rows_inserted": 2883,
+      "rows_updated": 0,
+      "status": "ok",
+      "error_message": null
+    },
+    {
+      "task_id": "ingest-20261119T155800",
+      "series_id": "DFF",
+      "started_at": "2026-11-19T07:59:35+00:00",
+      "finished_at": null,
+      "rows_inserted": 0,
+      "rows_updated": 0,
+      "status": "running",
+      "error_message": null
+    },
+    {
+      "task_id": "ingest-20261119T161907",
+      "series_id": "DFF",
+      "started_at": "2026-11-19T08:19:07+00:00",
+      "finished_at": "2026-11-19T08:19:15+00:00",
+      "rows_inserted": 26438,
+      "rows_updated": 0,
+      "status": "ok",
+      "error_message": null
+    },
+    {
+      "task_id": "ingest-20261119T161907",
+      "series_id": "DGS2",
+      "started_at": "2026-11-19T08:19:15+00:00",
+      "finished_at": "2026-11-19T08:19:20+00:00",
+      "rows_inserted": 12612,
+      "rows_updated": 0,
+      "status": "ok",
+      "error_message": null
+    },
+    {
+      "task_id": "ingest-20261119T161907",
+      "series_id": "DGS10",
+      "started_at": "2026-11-19T08:19:20+00:00",
+      "finished_at": "2026-11-19T08:19:26+00:00",
+      "rows_inserted": 16204,
+      "rows_updated": 0,
+      "status": "ok",
+      "error_message": null
+    },
+    {
+      "task_id": "ingest-20261119T161907",
+      "series_id": "VIXCLS",
+      "started_at": "2026-11-19T08:19:26+00:00",
+      "finished_at": "2026-11-19T08:19:31+00:00",
+      "rows_inserted": 9319,
+      "rows_updated": 0,
+      "status": "ok",
+      "error_message": null
+    },
+    {
+      "task_id": "ingest-20261119T161940",
+      "series_id": "DFF",
+      "started_at": "2026-11-19T08:19:40+00:00",
+      "finished_at": "2026-11-19T08:19:47+00:00",
+      "rows_inserted": 0,
+      "rows_updated": 0,
+      "status": "ok",
+      "error_message": null
+    },
+    {
+      "task_id": "ingest-20261119T161940",
+      "series_id": "VIXCLS",
+      "started_at": "2026-11-19T08:19:47+00:00",
+      "finished_at": "2026-11-19T08:19:52+00:00",
+      "rows_inserted": 0,
+      "rows_updated": 0,
+      "status": "ok",
+      "error_message": null
+    }
+  ]
+}
