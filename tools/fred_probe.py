@@ -137,84 +137,221 @@ class Fred:
 
 
 # --------------------------------------------------------------------------- #
-def _obs_map(payload) -> dict[str, str]:
+def _struct_summary(payload) -> dict:
+    """异常响应的结构摘要（写进报告，便于定位）。"""
+    if isinstance(payload, dict):
+        return {"type": "dict", "keys": list(payload)[:12],
+                "error": payload.get("error_message") or payload.get("error")}
+    return {"type": type(payload).__name__, "preview": str(payload)[:160]}
+
+
+def parse_vintage_dates(payload) -> tuple[list[str], dict]:
+    """vintage_dates 解析。
+
+    **实测结构**（2026-11-19 直连 FRED）::
+
+        {"vintage_dates": ["2026-11-10", "2026-10-14", "2026-09-11"], ...}
+
+    元素是**字符串**日期，不是对象。旧代码 ``d.get("vintage_date")`` 因此抛
+    ``AttributeError: 'str' object has no attribute 'get'``。
+
+    另兼容 ``[{"vintage_date": "..."}]`` 的字典形态（只作容错，主路径按实测结构）。
+    """
+    if not isinstance(payload, dict):
+        return [], {"error": "响应不是对象", "struct": _struct_summary(payload)}
+    raw = payload.get("vintage_dates")
+    if raw is None:
+        return [], {"error": "缺少 vintage_dates 字段", "struct": _struct_summary(payload)}
+    if not isinstance(raw, list):
+        return [], {"error": f"vintage_dates 不是数组（{type(raw).__name__}）",
+                    "struct": _struct_summary(payload)}
+    out, bad = [], 0
+    for item in raw:
+        if isinstance(item, str):
+            out.append(item)
+        elif isinstance(item, dict) and isinstance(item.get("vintage_date"), str):
+            out.append(item["vintage_date"])
+        else:
+            bad += 1
+    info: dict = {"page_count": payload.get("count"), "malformed_elements": bad}
+    if bad:
+        info["error"] = f"{bad} 个元素格式异常，已跳过"
+    return out, info
+
+
+def parse_series_meta(payload) -> tuple[dict, dict]:
+    """实测结构：``{"seriess": [ {...} ]}``。"""
+    if not isinstance(payload, dict) or not isinstance(payload.get("seriess"), list):
+        return {}, {"error": "缺少 seriess 数组", "struct": _struct_summary(payload)}
+    rows = payload["seriess"]
+    if not rows:
+        return {}, {"error": "seriess 为空"}
+    s = rows[0]
+    if not isinstance(s, dict):
+        return {}, {"error": "seriess[0] 不是对象", "struct": _struct_summary(s)}
+    keep = ("title", "units", "frequency", "seasonal_adjustment",
+            "observation_start", "observation_end", "last_updated", "popularity")
+    meta = {k: s.get(k) for k in keep}
+    meta["notes"] = str(s.get("notes") or "")[:200]
+    return meta, {}
+
+
+def parse_observations(payload) -> tuple[list[dict], dict]:
+    """实测结构：``{"observations": [{"realtime_start","realtime_end","date","value"}]}``。
+
+    400 时返回 ``{"error_code":400,"error_message":"..."}`` —— 没有 observations，
+    旧代码直接下标就 KeyError。
+    """
+    if not isinstance(payload, dict):
+        return [], {"error": "响应不是对象", "struct": _struct_summary(payload)}
+    if "observations" not in payload:
+        return [], {"error": payload.get("error_message") or "缺少 observations 字段",
+                    "struct": _struct_summary(payload)}
+    rows = payload["observations"]
+    if not isinstance(rows, list):
+        return [], {"error": "observations 不是数组", "struct": _struct_summary(payload)}
+    out = [r for r in rows if isinstance(r, dict) and isinstance(r.get("date"), str)]
+    if len(out) != len(rows):
+        return out, {"error": f"{len(rows) - len(out)} 条观测格式异常，已跳过"}
+    return out, {}
+
+
+def _value_map(rows) -> dict[str, str]:
     out = {}
-    for o in (payload or {}).get("observations", []) if isinstance(payload, dict) else []:
+    for o in rows:
         v = o.get("value")
-        if v not in (".", "", None):
-            out[o["date"]] = v
+        if v in (".", "", None):
+            continue
+        out[o["date"]] = v
     return out
 
 
-def probe_series(cli: Fred, sid: str, label: str, years: int) -> dict:
+def probe_series(cli: "Fred", sid: str, label: str, years: int) -> dict:
     start = (date.today() - timedelta(days=int(365.25 * years))).isoformat()
-    rec: dict = {"series_id": sid, "label": label, "window_start": start}
+    today = date.today().isoformat()
+    rec: dict = {"series_id": sid, "label": label, "window_start": start, "errors": []}
 
-    st, meta, safe = cli.get("series", series_id=sid)
+    def note(step: str, info: dict) -> None:
+        if info and info.get("error"):
+            rec["errors"].append({"step": step, **info})
+
+    st, body, _ = cli.get("series", series_id=sid)
     rec["meta_http"] = st
-    if st == 200 and isinstance(meta, dict):
-        s = (meta.get("seriess") or [{}])[0]
-        rec["meta"] = {k: s.get(k) for k in
-                       ("title", "units", "frequency", "seasonal_adjustment",
-                        "observation_start", "observation_end", "last_updated",
-                        "popularity", "notes")}
-        rec["meta"]["notes"] = (rec["meta"].get("notes") or "")[:200]
+    meta, info = parse_series_meta(body)
+    note("meta", info)
+    rec["meta"] = meta
 
-    st, first, _ = cli.get("series/observations", series_id=sid,
-                           sort_order="asc", limit=1)
-    rec["earliest"] = (first.get("observations") or [{}])[0] if st == 200 else None
+    st, body, _ = cli.get("series/observations", series_id=sid, sort_order="asc", limit=1)
+    rows, info = parse_observations(body)
+    note("earliest", info)
+    rec["earliest"] = rows[0] if rows else None
 
-    st, last, _ = cli.get("series/observations", series_id=sid,
-                          sort_order="desc", limit=1)
-    rec["latest"] = (last.get("observations") or [{}])[0] if st == 200 else None
+    st, body, _ = cli.get("series/observations", series_id=sid, sort_order="desc", limit=1)
+    rows, info = parse_observations(body)
+    note("latest", info)
+    rec["latest"] = rows[0] if rows else None
 
-    st, vd, _ = cli.get("series/vintagedates", series_id=sid,
-                        limit=10000, sort_order="desc")
-    dates = [d.get("vintage_date") for d in (vd.get("vintage_dates") or [])] if st == 200 else []
-    rec["vintage"] = {"http": st, "count": len(dates),
-                      "newest": dates[:3], "oldest": dates[-3:] if dates else []}
+    st, body, _ = cli.get("series/vintagedates", series_id=sid, limit=10000, sort_order="desc")
+    vdates, info = parse_vintage_dates(body)
+    note("vintagedates", info)
+    rec["vintage"] = {"http": st, "count": len(vdates),
+                      "newest": vdates[:3], "oldest": vdates[-3:], **info}
 
-    st_ini, ini, _ = cli.get("series/observations", series_id=sid,
-                             output_type=4, observation_start=start)
-    st_cur, cur, _ = cli.get("series/observations", series_id=sid,
-                             observation_start=start)
-    ini_map, cur_map = _obs_map(ini), _obs_map(cur)
-    rec["first_release_http"], rec["current_http"] = st_ini, st_cur
+    # 实测两处硬约束：
+    #  1) output_type=4 不给 realtime 窗口会 400（"No vintage dates exist ..."）；
+    #  2) 窗口内的 vintage 数超过 **2000** 也会 400
+    #     （"There are 5167 vintage dates ... maximum ... (2000)"，日频序列必踩）。
+    # 因此把 realtime_start 收到「观测窗口起点前 120 天」：
+    # 既覆盖每一次首次发布，又把 vintage 数量压到上限以内（日频 2 年 ≈ 600）。
+    rt_start = (date.fromisoformat(start) - timedelta(days=120)).isoformat()
+    wide = {"realtime_start": rt_start, "realtime_end": today}
+    st, body, _ = cli.get("series/observations", series_id=sid, output_type=4,
+                          observation_start=start, **wide)
+    ini_rows, info = parse_observations(body)
+    note("first_release", info)
+    rec["first_release_http"] = st
 
+    st, body, _ = cli.get("series/observations", series_id=sid, observation_start=start)
+    cur_rows, info = parse_observations(body)
+    note("current", info)
+    rec["current_http"] = st
+
+    ini_map, cur_map = _value_map(ini_rows), _value_map(cur_rows)
     diffs = []
-    for d, v_ini in ini_map.items():
-        v_cur = cur_map.get(d)
-        if v_cur is None:
+    for d, a in ini_map.items():
+        b = cur_map.get(d)
+        if b is None:
             continue
         try:
-            a, b = float(v_ini), float(v_cur)
+            fa, fb = float(a), float(b)
         except ValueError:
             continue
-        if abs(a - b) > 1e-9:
-            diffs.append({"date": d, "first_release": v_ini, "current": v_cur,
-                          "delta": round(b - a, 6),
-                          "pct": round((b / a - 1) * 100, 4) if a else None})
+        if abs(fa - fb) > 1e-9:
+            diffs.append({"date": d, "first_release": a, "current": b,
+                          "delta": round(fb - fa, 6),
+                          "pct": round((fb / fa - 1) * 100, 4) if fa else None})
     diffs.sort(key=lambda x: abs(x["delta"]), reverse=True)
-    rec["revision"] = {
-        "compared_points": len(set(ini_map) & set(cur_map)),
-        "revised_points": len(diffs),
-        "top": diffs[:5],
-    }
+    rec["revision"] = {"compared_points": len(set(ini_map) & set(cur_map)),
+                       "revised_points": len(diffs), "top": diffs[:5]}
     return rec
 
 
-def point_in_time(cli: Fred, sid: str, obs_date: str, vintages: list[str]) -> dict:
-    """验证「历史时点还原」：同一个观测日，在不同 vintage 下取到的值。"""
-    out = {"series_id": sid, "observation_date": obs_date, "snapshots": []}
-    for v in vintages:
-        st, body, _ = cli.get("series/observations", series_id=sid,
+def pit_check(cli: "Fred", sid: str, obs_date: str, current_value) -> dict:
+    """点时间还原：验证 realtime 窗口与**真实发布日**的关系。
+
+    不是"首次值 != 当前值"就算通过。这里做三件事：
+      1. 取该观测的完整 vintage 链（output_type=1 + 宽 realtime），最小
+         ``realtime_start`` 即**实际发布日**；
+      2. 把 ``realtime_end`` 设成发布日前一天 → 该观测**必须不可见**；
+      3. 把 ``realtime_end`` 设成发布日当天 → 必须可见且**等于首次公布值**。
+    三条同时成立，才算"历史时点可正确还原"。
+    """
+    wide_start = "1776-07-04"
+    today = date.today().isoformat()
+    out: dict = {"series_id": sid, "observation_date": obs_date,
+                 "current_value": current_value, "errors": []}
+
+    st, body, _ = cli.get("series/observations", series_id=sid,
+                          observation_start=obs_date, observation_end=obs_date,
+                          output_type=1, realtime_start=wide_start, realtime_end=today)
+    rows, info = parse_observations(body)
+    if info.get("error"):
+        out["errors"].append({"step": "chain", **info})
+    chain = sorted([r for r in rows if r.get("date") == obs_date],
+                   key=lambda r: str(r.get("realtime_start")))
+    out["http_chain"] = st
+    out["chain"] = [{"realtime_start": r.get("realtime_start"), "value": r.get("value")}
+                    for r in chain]
+    if not chain:
+        out["verdict"] = "FAIL: 取不到该观测的 vintage 链"
+        return out
+    pub = str(chain[0]["realtime_start"])
+    first_val = chain[0].get("value")
+    before = (date.fromisoformat(pub) - timedelta(days=1)).isoformat()
+
+    st_b, body_b, _ = cli.get("series/observations", series_id=sid,
                               observation_start=obs_date, observation_end=obs_date,
-                              realtime_start=v, realtime_end=v)
-        val = None
-        if st == 200:
-            ob = _obs_map(body)
-            val = ob.get(obs_date)
-        out["snapshots"].append({"realtime": v, "http": st, "value": val})
+                              output_type=1, realtime_start=wide_start, realtime_end=before)
+    rows_b, _ = parse_observations(body_b)
+    seen_before = [r.get("value") for r in rows_b if r.get("date") == obs_date]
+
+    st_a, body_a, _ = cli.get("series/observations", series_id=sid,
+                              observation_start=obs_date, observation_end=obs_date,
+                              output_type=1, realtime_start=wide_start, realtime_end=pub)
+    rows_a, _ = parse_observations(body_a)
+    seen_at = [r.get("value") for r in rows_a if r.get("date") == obs_date]
+
+    out.update({"publication_date": pub, "first_release_value": first_val,
+                "visible_day_before": seen_before,
+                "visible_on_publication_date": seen_at,
+                "http_before": st_b, "http_at": st_a,
+                "probe_before": f"realtime_end={before}",
+                "probe_at": f"realtime_end={pub}"})
+    ok_before = (len(seen_before) == 0)
+    ok_at = bool(seen_at) and str(seen_at[0]) == str(first_val)
+    out["verdict"] = ("PASS: 发布日前不可见，发布日当天=首次公布值"
+                      if (ok_before and ok_at) else
+                      f"FAIL: before_visible={seen_before} at={seen_at} first={first_val}")
     return out
 
 
@@ -235,45 +372,58 @@ def main() -> int:
         print(f"BLOCKED: {KEY_ENV} 格式不合法（长度 {len(key)}，FRED 要求 32 位小写字母数字）")
         return 2
 
-    print(f"KEY_SOURCE={source}  len={len(key)}  format=OK(32 lower-alnum)  fp={fp(key)}")
+    print(f"KEY_SOURCE={source}  len={len(key)}  format=OK(32 lower-alnum)"
+          "  （按要求不输出 key 与指纹）")
     cli = Fred(key, min_interval=args.min_interval)
     report: dict = {"probed_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                    "key_source": source, "key_fingerprint": fp(key),
-                    "base": BASE, "series": {}, "events": None}
+                    "key_source": source, "base": BASE,
+                    "series": {}, "errors": [], "events": None}
 
-    print(f"\n{'序列':16s} {'覆盖起始':11s} {'最早观测':11s} {'最新观测':11s} {'vintage数':>8s} {'近窗修订':>8s}")
+    hdr = (f"{'序列':16s} {'覆盖起始':11s} {'最早观测':11s} {'最新观测':11s} "
+           f"{'vintage':>8s} {'修订点':>6s}  状态")
+    print("\n" + hdr)
     for sid, label, years in SERIES:
-        r = probe_series(cli, sid, label, years)
+        try:
+            r = probe_series(cli, sid, label, years)
+        except Exception as exc:                      # noqa: BLE001
+            # 单序列失败不影响其它序列
+            r = {"series_id": sid, "label": label,
+                 "fatal": f"{type(exc).__name__}: {exc}", "errors": [],
+                 "revision": {"revised_points": -1}, "vintage": {"count": -1}}
+            report["errors"].append({"series_id": sid, "fatal": r["fatal"]})
         report["series"][sid] = r
+        if r.get("fatal"):
+            print(f"{sid:16s} {'-':11s} {'-':11s} {'-':11s} {'-':>8s} {'-':>6s}  FATAL {r['fatal'][:40]}")
+            continue
         m = r.get("meta") or {}
         e = (r.get("earliest") or {}).get("date", "-")
-        l = (r.get("latest") or {})
+        l = r.get("latest") or {}
+        st_txt = "OK" if not r["errors"] else f"{len(r['errors'])} 项结构异常"
         print(f"{sid:16s} {str(m.get('observation_start')):11s} {e:11s} "
               f"{str(l.get('date')):11s} {r['vintage']['count']:8d} "
-              f"{r['revision']['revised_points']:8d}")
+              f"{r['revision']['revised_points']:6d}  {st_txt}")
 
-    # ---- 挑修订最大的三处做点时间还原 ----
-    print("\n[点时间还原] 选修订幅度最大的 3 个点，比较不同 vintage 下的取值")
+    # ---- 挑修订最大的三处，做「发布日边界」验证 ----
+    print("\n[点时间还原] 选修订幅度最大的 3 个点，验证 realtime 窗口与真实发布日")
     picks = []
     for sid, r in report["series"].items():
-        for d in r["revision"]["top"][:1]:
+        if r.get("fatal"):
+            continue
+        for d in (r.get("revision") or {}).get("top", [])[:1]:
             picks.append((sid, d))
     picks.sort(key=lambda x: abs(float(x[1]["delta"])), reverse=True)
     pits = []
     for sid, d in picks[:3]:
-        vintages = [v for v in (report["series"][sid]["vintage"]["newest"] or [])][:1]
-        # 用「首次修订发生日」和「今天」两个快照对照
-        vd = report["series"][sid]["vintage"]
-        cand = []
-        if vd.get("oldest"):
-            cand.append(vd["oldest"][-1])
-        cand.append(date.today().isoformat())
-        pit = point_in_time(cli, sid, d["date"], cand)
-        pit["first_release_value"] = d["first_release"]
-        pit["current_value"] = d["current"]
+        try:
+            pit = pit_check(cli, sid, d["date"], d["current"])
+        except Exception as exc:                      # noqa: BLE001
+            pit = {"series_id": sid, "observation_date": d["date"],
+                   "verdict": f"ERROR {type(exc).__name__}: {exc}"}
+        pit["largest_revision"] = d
         pits.append(pit)
-        print(f"  {sid} {d['date']}: 首次={d['first_release']} 当前={d['current']} "
-              f"→ " + ", ".join(f"{s['realtime']}={s['value']}" for s in pit["snapshots"]))
+        print(f"  {sid} {d['date']} 发布日={pit.get('publication_date')} "
+              f"前一日可见={pit.get('visible_day_before')} "
+              f"发布日可见={pit.get('visible_on_publication_date')} → {pit.get('verdict')}")
     report["point_in_time"] = pits
 
     report["events"] = cli.events
@@ -306,7 +456,7 @@ def render_md(rep: dict, cli: "Fred") -> str:
     A = L.append
     A("# FRED 实测验证报告（12 条宏观序列 + 点时间还原）\n")
     A(f"**执行时间**：{rep['probed_at']}　**端点**：`{rep['base']}`　"
-      f"**密钥来源**：`{rep['key_source']}`（指纹 `{rep['key_fingerprint']}`，未落盘 key 本身）\n")
+      f"**密钥来源**：`{rep['key_source']}`（未落盘 key 本身，也不输出指纹）\n")
     A(f"**请求数**：{cli.calls}　**429 次数**：{cli.retry_429}\n")
     A("> 全部为官方 API 实测；`output_type=4` 取首次公布值，与当前值逐点比对得到修订。\n")
 
@@ -342,16 +492,46 @@ def render_md(rep: dict, cli: "Fred") -> str:
         A("_窗口内未检测到修订。_\n")
 
     A("## 三、点时间还原验证\n")
-    A("同一条观测，在不同 `realtime` 快照下取到的值：\n")
-    A("| 序列 | 观测日 | 首次公布值 | 历史快照取值 | 当前值 | 结论 |")
-    A("|---|---|---:|---|---:|---|")
+    A("判定标准不是「首次值 != 当前值」，而是三条同时成立：")
+    A("① 该观测在**发布日前一天**用 `realtime_end` 取不到；")
+    A("② 在**发布日当天**取得到；")
+    A("③ 取到的值等于**首次公布值**。\n")
+    A("| 序列 | 观测日 | 实际发布日 | 发布日前可见? | 发布日可见值 | 首次公布值 | 当前值 | 判定 |")
+    A("|---|---|---|---|---|---:|---:|---|")
     for pit in rep.get("point_in_time", []):
-        snaps = pit.get("snapshots") or []
-        hist = "; ".join(f"{s['realtime']}={s['value']}" for s in snaps[:-1]) or "-"
-        A(f"| `{pit['series_id']}` | {pit['observation_date']} | "
-          f"{pit.get('first_release_value')} | {hist} | {pit.get('current_value')} | "
-          f"{'历史值与当前值不同 → 回测若用当前值即引入未来信息' if hist and hist.split('=')[-1] != pit.get('current_value') else '见快照'} |")
+        before = pit.get("visible_day_before")
+        before_txt = "不可见 ✅" if before == [] else f"可见 {before}"
+        at = pit.get("visible_on_publication_date") or []
+        A(f"| `{pit.get('series_id')}` | {pit.get('observation_date')} | "
+          f"{pit.get('publication_date', '-')} | {before_txt} | "
+          f"{at[0] if at else '-'} | {pit.get('first_release_value', '-')} | "
+          f"{pit.get('current_value', '-')} | {pit.get('verdict', '-')} |")
     A("")
+    A("### vintage 链（同一观测在各发布版本下的取值）\n")
+    for pit in rep.get("point_in_time", []):
+        chain = pit.get("chain") or []
+        if not chain:
+            continue
+        A(f"- `{pit.get('series_id')}` {pit.get('observation_date')}: " +
+          " → ".join(f"{c.get('realtime_start')}={c.get('value')}" for c in chain))
+    A("")
+
+    errs = [e for e in (rep.get("errors") or [])]
+    if errs:
+        A("## 三之二、结构异常记录\n")
+        A("| 序列 | 步骤 | 错误 | 响应摘要 |")
+        A("|---|---|---|---|")
+        for e in errs:
+            A(f"| `{e.get('series_id','-')}` | {e.get('step','fatal')} | "
+              f"{e.get('error') or e.get('fatal')} | {str(e.get('struct',''))[:90]} |")
+        A("")
+    per_series_err = [(sid, x) for sid, r in rep["series"].items()
+                      for x in (r.get("errors") or [])]
+    if per_series_err:
+        A("### 单序列内的解析异常\n")
+        for sid, x in per_series_err:
+            A(f"- `{sid}` / {x.get('step')}: {x.get('error')} — `{str(x.get('struct',''))[:100]}`")
+        A("")
 
     A("## 四、评价\n")
     A("| 维度 | 结论 |")
@@ -363,6 +543,20 @@ def render_md(rep: dict, cli: "Fred") -> str:
     A("| 费用 | 免费（需注册 key） |")
     A("| 接口稳定性 | 串行 + 0.55s 节流，本轮 429 次数见页首 |")
     A("")
+    A("## 四之二、接口硬约束（本轮实测踩到的 400）\n")
+    A("| # | 约束 | 触发条件 | 错误原文/表现 |")
+    A("|---|---|---|---|")
+    A("| 1 | `vintage_dates` 是**字符串数组** | 按 `d.get('vintage_date')` 解析 | "
+      "`AttributeError: 'str' object has no attribute 'get'`（整轮中断） |")
+    A("| 2 | `output_type=4` **必须**给 realtime 窗口 | 只传 `observation_start` | "
+      "400 `No vintage dates exist for the specified real-time period: <today> to <today>` |")
+    A("| 3 | 窗口内 vintage 数 **≤2000** | 日频序列用 1776→今天 | "
+      "400 `There are 5167 vintage dates ... exceeds the maximum ... (2000)` |")
+    A("| 4 | 400 响应**没有** `observations` 字段 | 直接 `body['observations']` | `KeyError` |")
+    A("")
+    A("对策：`realtime_start` 取「观测窗口起点前 120 天」——既覆盖每次首次发布，"
+      "又把 vintage 数压到上限内（日频 2 年约 600）。\n")
+
     A("## 五、未验证\n")
     A("- FRED 的**硬性速率上限**（官方未公布具体数值，只建议 ≤120 次/分钟）")
     A("- 各序列的**逐条授权条款**（是否有第三方再分发限制）")

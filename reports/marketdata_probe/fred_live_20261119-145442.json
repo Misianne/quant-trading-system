@@ -1,0 +1,1559 @@
+{
+  "probed_at": "2026-11-19T06:54:42+00:00",
+  "key_source": "user_env(registry)",
+  "base": "https://api.stlouisfed.org/fred",
+  "series": {
+    "CPIAUCSL": {
+      "series_id": "CPIAUCSL",
+      "label": "CPI 全项目（季调）",
+      "window_start": "2023-11-20",
+      "errors": [],
+      "meta_http": 200,
+      "meta": {
+        "title": "Consumer Price Index for All Urban Consumers: All Items in U.S. City Average",
+        "units": "Index 1982-1984=100",
+        "frequency": "Monthly",
+        "seasonal_adjustment": "Seasonally Adjusted",
+        "observation_start": "1947-01-01",
+        "observation_end": "2026-10-01",
+        "last_updated": "2026-11-10 08:12:46-06",
+        "popularity": 97,
+        "notes": "The Consumer Price Index for All Urban Consumers: All Items (CPIAUCSL) is a price index of a basket of goods and services paid by urban consumers. Percent changes in the price index measure the inflat"
+      },
+      "earliest": {
+        "realtime_start": "2026-11-18",
+        "realtime_end": "2026-11-18",
+        "date": "1947-01-01",
+        "value": "21.48"
+      },
+      "latest": {
+        "realtime_start": "2026-11-12",
+        "realtime_end": "2026-11-12",
+        "date": "2026-10-01",
+        "value": "337.476"
+      },
+      "vintage": {
+        "http": 200,
+        "count": 671,
+        "newest": [
+          "2026-11-10",
+          "2026-10-14",
+          "2026-09-11"
+        ],
+        "oldest": [
+          "1972-09-22",
+          "1972-08-22",
+          "1972-07-21"
+        ],
+        "page_count": 671,
+        "malformed_elements": 0
+      },
+      "first_release_http": 200,
+      "current_http": 200,
+      "revision": {
+        "compared_points": 35,
+        "revised_points": 25,
+        "top": [
+          {
+            "date": "2023-11-01",
+            "first_release": "307.917",
+            "current": "308.148",
+            "delta": 0.231,
+            "pct": 0.075
+          },
+          {
+            "date": "2024-04-01",
+            "first_release": "313.207",
+            "current": "313.023",
+            "delta": -0.184,
+            "pct": -0.0587
+          },
+          {
+            "date": "2024-10-01",
+            "first_release": "315.454",
+            "current": "315.631",
+            "delta": 0.177,
+            "pct": 0.0561
+          },
+          {
+            "date": "2025-03-01",
+            "first_release": "319.615",
+            "current": "319.785",
+            "delta": 0.17,
+            "pct": 0.0532
+          },
+          {
+            "date": "2025-01-01",
+            "first_release": "319.086",
+            "current": "318.961",
+            "delta": -0.125,
+            "pct": -0.0392
+          }
+        ]
+      }
+    },
+    "CPILFESL": {
+      "series_id": "CPILFESL",
+      "label": "核心 CPI（季调）",
+      "window_start": "2023-11-20",
+      "errors": [],
+      "meta_http": 200,
+      "meta": {
+        "title": "Consumer Price Index for All Urban Consumers: All Items Less Food and Energy in U.S. City Average",
+        "units": "Index 1982-1984=100",
+        "frequency": "Monthly",
+        "seasonal_adjustment": "Seasonally Adjusted",
+        "observation_start": "1957-01-01",
+        "observation_end": "2026-10-01",
+        "last_updated": "2026-11-10 08:13:38-06",
+        "popularity": 83,
+        "notes": "The \"Consumer Price Index for All Urban Consumers: All Items Less Food & Energy\" is an aggregate of prices paid by urban consumers for a typical basket of goods, excluding food and energy. This measur"
+      },
+      "earliest": {
+        "realtime_start": "2026-11-18",
+        "realtime_end": "2026-11-18",
+        "date": "1957-01-01",
+        "value": "28.5"
+      },
+      "latest": {
+        "realtime_start": "2026-11-10",
+        "realtime_end": "2026-11-10",
+        "date": "2026-10-01",
+        "value": "339.9"
+      },
+      "vintage": {
+        "http": 200,
+        "count": 378,
+        "newest": [
+          "2026-11-10",
+          "2026-10-14",
+          "2026-09-11"
+        ],
+        "oldest": [
+          "1997-02-19",
+          "1997-01-14",
+          "1996-12-12"
+        ],
+        "page_count": 378,
+        "malformed_elements": 0
+      },
+      "first_release_http": 200,
+      "current_http": 200,
+      "revision": {
+        "compared_points": 35,
+        "revised_points": 24,
+        "top": [
+          {
+            "date": "2023-11-01",
+            "first_release": "312.251",
+            "current": "312.392",
+            "delta": 0.141,
+            "pct": 0.0452
+          },
+          {
+            "date": "2024-12-01",
+            "first_release": "323.383",
+            "current": "323.259",
+            "delta": -0.124,
+            "pct": -0.0383
+          },
+          {
+            "date": "2025-09-01",
+            "first_release": "330.542",
+            "current": "330.418",
+            "delta": -0.124,
+            "pct": -0.0375
+          },
+          {
+            "date": "2024-01-01",
+            "first_release": "314.438",
+            "current": "314.319",
+            "delta": -0.119,
+            "pct": -0.0378
+          },
+          {
+            "date": "2025-01-01",
+            "first_release": "324.739",
+            "current": "324.638",
+            "delta": -0.101,
+            "pct": -0.0311
+          }
+        ]
+      }
+    },
+    "PCEPI": {
+      "series_id": "PCEPI",
+      "label": "PCE 价格指数（季调）",
+      "window_start": "2023-11-20",
+      "errors": [],
+      "meta_http": 200,
+      "meta": {
+        "title": "Personal Consumption Expenditures: Chain-type Price Index",
+        "units": "Index 2017=100",
+        "frequency": "Monthly",
+        "seasonal_adjustment": "Seasonally Adjusted",
+        "observation_start": "1959-01-01",
+        "observation_end": "2026-09-01",
+        "last_updated": "2026-10-29 07:43:37-05",
+        "popularity": 84,
+        "notes": "BEA Account Code: DPCERG\r\n\r\nThe Personal Consumption Expenditures Price Index is a measure of the prices that people living in the United States, or those buying on their behalf, pay for goods and ser"
+      },
+      "earliest": {
+        "realtime_start": "2026-11-19",
+        "realtime_end": "2026-11-19",
+        "date": "1959-01-01",
+        "value": "15.164"
+      },
+      "latest": {
+        "realtime_start": "2026-10-29",
+        "realtime_end": "2026-10-29",
+        "date": "2026-09-01",
+        "value": "132.257"
+      },
+      "vintage": {
+        "http": 200,
+        "count": 317,
+        "newest": [
+          "2026-10-29",
+          "2026-09-30",
+          "2026-08-26"
+        ],
+        "oldest": [
+          "2000-09-29",
+          "2000-08-28",
+          "2000-08-01"
+        ],
+        "page_count": 317,
+        "malformed_elements": 0
+      },
+      "first_release_http": 200,
+      "current_http": 200,
+      "revision": {
+        "compared_points": 35,
+        "revised_points": 34,
+        "top": [
+          {
+            "date": "2026-07-01",
+            "first_release": "131.659",
+            "current": "131.187",
+            "delta": -0.472,
+            "pct": -0.3585
+          },
+          {
+            "date": "2023-11-01",
+            "first_release": "121.222",
+            "current": "121.636",
+            "delta": 0.414,
+            "pct": 0.3415
+          },
+          {
+            "date": "2023-12-01",
+            "first_release": "121.421",
+            "current": "121.76",
+            "delta": 0.339,
+            "pct": 0.2792
+          },
+          {
+            "date": "2024-01-01",
+            "first_release": "121.87",
+            "current": "122.206",
+            "delta": 0.336,
+            "pct": 0.2757
+          },
+          {
+            "date": "2024-03-01",
+            "first_release": "122.769",
+            "current": "123.093",
+            "delta": 0.324,
+            "pct": 0.2639
+          }
+        ]
+      }
+    },
+    "PCEPILFE": {
+      "series_id": "PCEPILFE",
+      "label": "核心 PCE（季调）",
+      "window_start": "2023-11-20",
+      "errors": [],
+      "meta_http": 200,
+      "meta": {
+        "title": "Personal Consumption Expenditures Excluding Food and Energy (Chain-Type Price Index)",
+        "units": "Index 2017=100",
+        "frequency": "Monthly",
+        "seasonal_adjustment": "Seasonally Adjusted",
+        "observation_start": "1959-01-01",
+        "observation_end": "2026-09-01",
+        "last_updated": "2026-10-29 07:43:35-05",
+        "popularity": 79,
+        "notes": "BEA Account Code: DPCCRG\r\n\r\nThe Personal Consumption Expenditures Price Index is a measure of the prices that people living in the United States, or those buying on their behalf, pay for goods and ser"
+      },
+      "earliest": {
+        "realtime_start": "2026-11-18",
+        "realtime_end": "2026-11-18",
+        "date": "1959-01-01",
+        "value": "15.501"
+      },
+      "latest": {
+        "realtime_start": "2026-11-10",
+        "realtime_end": "2026-11-10",
+        "date": "2026-09-01",
+        "value": "130.902"
+      },
+      "vintage": {
+        "http": 200,
+        "count": 317,
+        "newest": [
+          "2026-10-29",
+          "2026-09-30",
+          "2026-08-26"
+        ],
+        "oldest": [
+          "2000-09-29",
+          "2000-08-28",
+          "2000-08-01"
+        ],
+        "page_count": 317,
+        "malformed_elements": 0
+      },
+      "first_release_http": 200,
+      "current_http": 200,
+      "revision": {
+        "compared_points": 35,
+        "revised_points": 34,
+        "top": [
+          {
+            "date": "2026-07-01",
+            "first_release": "130.658",
+            "current": "130.148",
+            "delta": -0.51,
+            "pct": -0.3903
+          },
+          {
+            "date": "2023-11-01",
+            "first_release": "120.09",
+            "current": "120.525",
+            "delta": 0.435,
+            "pct": 0.3622
+          },
+          {
+            "date": "2024-07-01",
+            "first_release": "122.459",
+            "current": "122.872",
+            "delta": 0.413,
+            "pct": 0.3373
+          },
+          {
+            "date": "2024-02-01",
+            "first_release": "121.165",
+            "current": "121.57",
+            "delta": 0.405,
+            "pct": 0.3343
+          },
+          {
+            "date": "2024-03-01",
+            "first_release": "121.615",
+            "current": "122.016",
+            "delta": 0.401,
+            "pct": 0.3297
+          }
+        ]
+      }
+    },
+    "PAYEMS": {
+      "series_id": "PAYEMS",
+      "label": "非农就业（季调，千人）",
+      "window_start": "2023-11-20",
+      "errors": [],
+      "meta_http": 200,
+      "meta": {
+        "title": "All Employees, Total Nonfarm",
+        "units": "Thousands of Persons",
+        "frequency": "Monthly",
+        "seasonal_adjustment": "Seasonally Adjusted",
+        "observation_start": "1939-01-01",
+        "observation_end": "2026-10-01",
+        "last_updated": "2026-11-06 09:43:20-06",
+        "popularity": 85,
+        "notes": "All Employees: Total Nonfarm, commonly known as Total Nonfarm Payroll, is a measure of the number of U.S. workers in the economy that excludes proprietors, private household employees, unpaid voluntee"
+      },
+      "earliest": {
+        "realtime_start": "2026-11-18",
+        "realtime_end": "2026-11-18",
+        "date": "1939-01-01",
+        "value": "29923"
+      },
+      "latest": {
+        "realtime_start": "2026-11-06",
+        "realtime_end": "2026-11-06",
+        "date": "2026-10-01",
+        "value": "159293"
+      },
+      "vintage": {
+        "http": 200,
+        "count": 861,
+        "newest": [
+          "2026-11-06",
+          "2026-10-02",
+          "2026-09-04"
+        ],
+        "oldest": [
+          "1955-07-08",
+          "1955-06-07",
+          "1955-05-06"
+        ],
+        "page_count": 861,
+        "malformed_elements": 0
+      },
+      "first_release_http": 200,
+      "current_http": 200,
+      "revision": {
+        "compared_points": 36,
+        "revised_points": 35,
+        "top": [
+          {
+            "date": "2025-06-01",
+            "first_release": "159724",
+            "current": "158478",
+            "delta": -1246.0,
+            "pct": -0.7801
+          },
+          {
+            "date": "2024-12-01",
+            "first_release": "159536",
+            "current": "158316",
+            "delta": -1220.0,
+            "pct": -0.7647
+          },
+          {
+            "date": "2024-11-01",
+            "first_release": "159288",
+            "current": "158079",
+            "delta": -1209.0,
+            "pct": -0.759
+          },
+          {
+            "date": "2024-09-01",
+            "first_release": "159105",
+            "current": "157912",
+            "delta": -1193.0,
+            "pct": -0.7498
+          },
+          {
+            "date": "2025-11-01",
+            "first_release": "159552",
+            "current": "158449",
+            "delta": -1103.0,
+            "pct": -0.6913
+          }
+        ]
+      }
+    },
+    "UNRATE": {
+      "series_id": "UNRATE",
+      "label": "失业率（季调）",
+      "window_start": "2023-11-20",
+      "errors": [],
+      "meta_http": 200,
+      "meta": {
+        "title": "Unemployment Rate",
+        "units": "Percent",
+        "frequency": "Monthly",
+        "seasonal_adjustment": "Seasonally Adjusted",
+        "observation_start": "1948-01-01",
+        "observation_end": "2026-10-01",
+        "last_updated": "2026-11-06 09:43:15-06",
+        "popularity": 96,
+        "notes": "The unemployment rate represents the number of unemployed as a percentage of the labor force. Labor force data are restricted to people 16 years of age and older, who currently reside in 1 of the 50 s"
+      },
+      "earliest": {
+        "realtime_start": "2026-11-18",
+        "realtime_end": "2026-11-18",
+        "date": "1948-01-01",
+        "value": "3.4"
+      },
+      "latest": {
+        "realtime_start": "2026-11-06",
+        "realtime_end": "2026-11-06",
+        "date": "2026-10-01",
+        "value": "4.1"
+      },
+      "vintage": {
+        "http": 200,
+        "count": 801,
+        "newest": [
+          "2026-11-06",
+          "2026-10-02",
+          "2026-09-04"
+        ],
+        "oldest": [
+          "1960-05-11",
+          "1960-04-12",
+          "1960-03-15"
+        ],
+        "page_count": 801,
+        "malformed_elements": 0
+      },
+      "first_release_http": 200,
+      "current_http": 200,
+      "revision": {
+        "compared_points": 35,
+        "revised_points": 8,
+        "top": [
+          {
+            "date": "2023-12-01",
+            "first_release": "3.7",
+            "current": "3.8",
+            "delta": 0.1,
+            "pct": 2.7027
+          },
+          {
+            "date": "2024-03-01",
+            "first_release": "3.8",
+            "current": "3.9",
+            "delta": 0.1,
+            "pct": 2.6316
+          },
+          {
+            "date": "2024-05-01",
+            "first_release": "4.0",
+            "current": "3.9",
+            "delta": -0.1,
+            "pct": -2.5
+          },
+          {
+            "date": "2024-07-01",
+            "first_release": "4.3",
+            "current": "4.2",
+            "delta": -0.1,
+            "pct": -2.3256
+          },
+          {
+            "date": "2025-02-01",
+            "first_release": "4.1",
+            "current": "4.2",
+            "delta": 0.1,
+            "pct": 2.439
+          }
+        ]
+      }
+    },
+    "CES0500000003": {
+      "series_id": "CES0500000003",
+      "label": "平均时薪（季调）",
+      "window_start": "2023-11-20",
+      "errors": [],
+      "meta_http": 200,
+      "meta": {
+        "title": "Average Hourly Earnings of All Employees, Total Private",
+        "units": "Dollars per Hour",
+        "frequency": "Monthly",
+        "seasonal_adjustment": "Seasonally Adjusted",
+        "observation_start": "2006-03-01",
+        "observation_end": "2026-10-01",
+        "last_updated": "2026-11-06 09:42:53-06",
+        "popularity": 79,
+        "notes": "The series comes from the 'Current Employment Statistics (Establishment Survey).'\r\nThe source code is: CES0500000003\r\n\r\nThe Average Hourly Earnings of All Private Employees is a measure of the average"
+      },
+      "earliest": {
+        "realtime_start": "2026-11-18",
+        "realtime_end": "2026-11-18",
+        "date": "2006-03-01",
+        "value": "20.04"
+      },
+      "latest": {
+        "realtime_start": "2026-11-06",
+        "realtime_end": "2026-11-06",
+        "date": "2026-10-01",
+        "value": "38"
+      },
+      "vintage": {
+        "http": 200,
+        "count": 188,
+        "newest": [
+          "2026-11-06",
+          "2026-10-02",
+          "2026-09-04"
+        ],
+        "oldest": [
+          "2011-05-06",
+          "2011-04-01",
+          "2011-03-04"
+        ],
+        "page_count": 188,
+        "malformed_elements": 0
+      },
+      "first_release_http": 200,
+      "current_http": 200,
+      "revision": {
+        "compared_points": 36,
+        "revised_points": 31,
+        "top": [
+          {
+            "date": "2025-11-01",
+            "first_release": "36.86",
+            "current": "37.00",
+            "delta": 0.14,
+            "pct": 0.3798
+          },
+          {
+            "date": "2025-03-01",
+            "first_release": "36.00",
+            "current": "36.11",
+            "delta": 0.11,
+            "pct": 0.3056
+          },
+          {
+            "date": "2025-08-01",
+            "first_release": "36.53",
+            "current": "36.62",
+            "delta": 0.09,
+            "pct": 0.2464
+          },
+          {
+            "date": "2024-01-01",
+            "first_release": "34.55",
+            "current": "34.47",
+            "delta": -0.08,
+            "pct": -0.2315
+          },
+          {
+            "date": "2023-11-01",
+            "first_release": "34.10",
+            "current": "34.17",
+            "delta": 0.07,
+            "pct": 0.2053
+          }
+        ]
+      }
+    },
+    "GDP": {
+      "series_id": "GDP",
+      "label": "GDP（名义，季调年化）",
+      "window_start": "2022-11-19",
+      "errors": [],
+      "meta_http": 200,
+      "meta": {
+        "title": "Gross Domestic Product",
+        "units": "Billions of Dollars",
+        "frequency": "Quarterly",
+        "seasonal_adjustment": "Seasonally Adjusted Annual Rate",
+        "observation_start": "1947-01-01",
+        "observation_end": "2026-07-01",
+        "last_updated": "2026-10-29 08:03:33-05",
+        "popularity": 92,
+        "notes": "BEA Account Code: A191RC\n\nGross domestic product (GDP), the featured measure of U.S. output, is the market value of the goods and services produced by labor and property located in the United States.F"
+      },
+      "earliest": {
+        "realtime_start": "2026-11-19",
+        "realtime_end": "2026-11-19",
+        "date": "1946-01-01",
+        "value": "."
+      },
+      "latest": {
+        "realtime_start": "2026-10-29",
+        "realtime_end": "2026-10-29",
+        "date": "2026-07-01",
+        "value": "33010.036"
+      },
+      "vintage": {
+        "http": 200,
+        "count": 416,
+        "newest": [
+          "2026-10-29",
+          "2026-09-30",
+          "2026-08-26"
+        ],
+        "oldest": [
+          "1992-01-29",
+          "1991-12-20",
+          "1991-12-04"
+        ],
+        "page_count": 416,
+        "malformed_elements": 0
+      },
+      "first_release_http": 200,
+      "current_http": 200,
+      "revision": {
+        "compared_points": 16,
+        "revised_points": 15,
+        "top": [
+          {
+            "date": "2023-01-01",
+            "first_release": "26465.865",
+            "current": "27241.282",
+            "delta": 775.417,
+            "pct": 2.9299
+          },
+          {
+            "date": "2023-04-01",
+            "first_release": "26834.953",
+            "current": "27533.925",
+            "delta": 698.972,
+            "pct": 2.6047
+          },
+          {
+            "date": "2022-10-01",
+            "first_release": "26132.458",
+            "current": "26774.117",
+            "delta": 641.659,
+            "pct": 2.4554
+          },
+          {
+            "date": "2024-04-01",
+            "first_release": "28629.153",
+            "current": "29232.964",
+            "delta": 603.811,
+            "pct": 2.1091
+          },
+          {
+            "date": "2023-10-01",
+            "first_release": "27938.831",
+            "current": "28464.306",
+            "delta": 525.475,
+            "pct": 1.8808
+          }
+        ]
+      }
+    },
+    "DFF": {
+      "series_id": "DFF",
+      "label": "联邦基金有效利率（日）",
+      "window_start": "2024-11-19",
+      "errors": [],
+      "meta_http": 200,
+      "meta": {
+        "title": "Federal Funds Effective Rate",
+        "units": "Percent",
+        "frequency": "Daily, 7-Day",
+        "seasonal_adjustment": "Not Seasonally Adjusted",
+        "observation_start": "1954-07-01",
+        "observation_end": "2026-11-17",
+        "last_updated": "2026-11-18 15:16:41-06",
+        "popularity": 86,
+        "notes": " Daily Federal Funds Rate from 1928-1954 (https://fred.stlouisfed.org/categories/33951).\n\nThe federal funds rate is the interest rate at which depository institutions trade federal funds (balances hel"
+      },
+      "earliest": {
+        "realtime_start": "2026-11-18",
+        "realtime_end": "2026-11-18",
+        "date": "1954-07-01",
+        "value": "1.13"
+      },
+      "latest": {
+        "realtime_start": "2026-11-18",
+        "realtime_end": "2026-11-18",
+        "date": "2026-11-17",
+        "value": "3.88"
+      },
+      "vintage": {
+        "http": 200,
+        "count": 5168,
+        "newest": [
+          "2026-11-18",
+          "2026-11-17",
+          "2026-11-16"
+        ],
+        "oldest": [
+          "2005-07-07",
+          "2005-07-06",
+          "2005-06-28"
+        ],
+        "page_count": 5168,
+        "malformed_elements": 0
+      },
+      "first_release_http": 200,
+      "current_http": 200,
+      "revision": {
+        "compared_points": 729,
+        "revised_points": 0,
+        "top": []
+      }
+    },
+    "DGS2": {
+      "series_id": "DGS2",
+      "label": "2 年期国债收益率（日）",
+      "window_start": "2024-11-19",
+      "errors": [],
+      "meta_http": 200,
+      "meta": {
+        "title": "Market Yield on U.S. Treasury Securities at 2-Year Constant Maturity, Quoted on an Investment Basis",
+        "units": "Percent",
+        "frequency": "Daily",
+        "seasonal_adjustment": "Not Seasonally Adjusted",
+        "observation_start": "1976-06-01",
+        "observation_end": "2026-11-17",
+        "last_updated": "2026-11-18 15:17:21-06",
+        "popularity": 86,
+        "notes": "H.15 Statistical Release notes (https://www.federalreserve.gov/releases/h15/default.htm) and the Treasury Yield Curve Methodology (https://home.treasury.gov/policy-issues/financing-the-government/inte"
+      },
+      "earliest": {
+        "realtime_start": "2026-11-18",
+        "realtime_end": "2026-11-18",
+        "date": "1976-06-01",
+        "value": "7.260"
+      },
+      "latest": {
+        "realtime_start": "2026-11-18",
+        "realtime_end": "2026-11-18",
+        "date": "2026-11-17",
+        "value": "4.8"
+      },
+      "vintage": {
+        "http": 200,
+        "count": 5154,
+        "newest": [
+          "2026-11-18",
+          "2026-11-17",
+          "2026-11-16"
+        ],
+        "oldest": [
+          "2005-07-07",
+          "2005-07-06",
+          "2005-06-28"
+        ],
+        "page_count": 5154,
+        "malformed_elements": 0
+      },
+      "first_release_http": 200,
+      "current_http": 200,
+      "revision": {
+        "compared_points": 498,
+        "revised_points": 0,
+        "top": []
+      }
+    },
+    "DGS10": {
+      "series_id": "DGS10",
+      "label": "10 年期国债收益率（日）",
+      "window_start": "2024-11-19",
+      "errors": [],
+      "meta_http": 200,
+      "meta": {
+        "title": "Market Yield on U.S. Treasury Securities at 10-Year Constant Maturity, Quoted on an Investment Basis",
+        "units": "Percent",
+        "frequency": "Daily",
+        "seasonal_adjustment": "Not Seasonally Adjusted",
+        "observation_start": "1962-01-02",
+        "observation_end": "2026-11-17",
+        "last_updated": "2026-11-18 15:17:09-06",
+        "popularity": 99,
+        "notes": "H.15 Statistical Release (https://www.federalreserve.gov/releases/h15/current/h15.pdf) notes and Treasury Yield Curve Methodology (https://www.treasury.gov/resource-center/data-chart-center/interest-r"
+      },
+      "earliest": {
+        "realtime_start": "2026-11-18",
+        "realtime_end": "2026-11-18",
+        "date": "1962-01-02",
+        "value": "4.06"
+      },
+      "latest": {
+        "realtime_start": "2026-11-18",
+        "realtime_end": "2026-11-18",
+        "date": "2026-11-17",
+        "value": "5.1"
+      },
+      "vintage": {
+        "http": 200,
+        "count": 5153,
+        "newest": [
+          "2026-11-18",
+          "2026-11-17",
+          "2026-11-16"
+        ],
+        "oldest": [
+          "2005-07-07",
+          "2005-07-06",
+          "2005-06-28"
+        ],
+        "page_count": 5153,
+        "malformed_elements": 0
+      },
+      "first_release_http": 200,
+      "current_http": 200,
+      "revision": {
+        "compared_points": 498,
+        "revised_points": 0,
+        "top": []
+      }
+    },
+    "VIXCLS": {
+      "series_id": "VIXCLS",
+      "label": "VIX 收盘（日）",
+      "window_start": "2024-11-19",
+      "errors": [],
+      "meta_http": 200,
+      "meta": {
+        "title": "CBOE Volatility Index: VIX",
+        "units": "Index",
+        "frequency": "Daily, Close",
+        "seasonal_adjustment": "Not Seasonally Adjusted",
+        "observation_start": "1990-01-02",
+        "observation_end": "2026-11-17",
+        "last_updated": "2026-11-18 08:38:30-06",
+        "popularity": 86,
+        "notes": "VIX measures market expectation of near term volatility conveyed by stock index option prices. Copyright, 2016, Chicago Board Options Exchange, Inc. Reprinted with permission."
+      },
+      "earliest": {
+        "realtime_start": "2026-11-18",
+        "realtime_end": "2026-11-18",
+        "date": "1990-01-02",
+        "value": "17.24"
+      },
+      "latest": {
+        "realtime_start": "2026-11-18",
+        "realtime_end": "2026-11-18",
+        "date": "2026-11-17",
+        "value": "25.46"
+      },
+      "vintage": {
+        "http": 200,
+        "count": 3976,
+        "newest": [
+          "2026-11-17",
+          "2026-11-16",
+          "2026-11-13"
+        ],
+        "oldest": [
+          "2010-11-24",
+          "2010-11-23",
+          "2010-11-22"
+        ],
+        "page_count": 3976,
+        "malformed_elements": 0
+      },
+      "first_release_http": 200,
+      "current_http": 200,
+      "revision": {
+        "compared_points": 515,
+        "revised_points": 0,
+        "top": []
+      }
+    }
+  },
+  "errors": [],
+  "events": [
+    {
+      "path": "series",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/vintagedates",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/vintagedates",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/vintagedates",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/vintagedates",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/vintagedates",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/vintagedates",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/vintagedates",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/vintagedates",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/vintagedates",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/vintagedates",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/vintagedates",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/vintagedates",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    },
+    {
+      "path": "series/observations",
+      "attempt": 1,
+      "http": 200,
+      "outcome": "OK"
+    }
+  ],
+  "point_in_time": [
+    {
+      "series_id": "PAYEMS",
+      "observation_date": "2025-06-01",
+      "current_value": "158478",
+      "errors": [],
+      "http_chain": 200,
+      "chain": [
+        {
+          "realtime_start": "2025-07-03",
+          "value": "159724"
+        },
+        {
+          "realtime_start": "2025-08-01",
+          "value": "159466"
+        },
+        {
+          "realtime_start": "2025-09-05",
+          "value": "159439"
+        },
+        {
+          "realtime_start": "2026-02-11",
+          "value": "158478"
+        }
+      ],
+      "publication_date": "2025-07-03",
+      "first_release_value": "159724",
+      "visible_day_before": [],
+      "visible_on_publication_date": [
+        "159724"
+      ],
+      "http_before": 200,
+      "http_at": 200,
+      "probe_before": "realtime_end=2025-07-02",
+      "probe_at": "realtime_end=2025-07-03",
+      "verdict": "PASS: 发布日前不可见，发布日当天=首次公布值",
+      "largest_revision": {
+        "date": "2025-06-01",
+        "first_release": "159724",
+        "current": "158478",
+        "delta": -1246.0,
+        "pct": -0.7801
+      }
+    },
+    {
+      "series_id": "GDP",
+      "observation_date": "2023-01-01",
+      "current_value": "27241.282",
+      "errors": [],
+      "http_chain": 200,
+      "chain": [
+        {
+          "realtime_start": "2023-04-27",
+          "value": "26465.865"
+        },
+        {
+          "realtime_start": "2023-05-25",
+          "value": "26486.287"
+        },
+        {
+          "realtime_start": "2023-06-29",
+          "value": "26529.774"
+        },
+        {
+          "realtime_start": "2023-09-28",
+          "value": "26813.601"
+        },
+        {
+          "realtime_start": "2024-09-26",
+          "value": "27164.359"
+        },
+        {
+          "realtime_start": "2025-09-25",
+          "value": "27216.445"
+        },
+        {
+          "realtime_start": "2026-09-30",
+          "value": "27241.282"
+        }
+      ],
+      "publication_date": "2023-04-27",
+      "first_release_value": "26465.865",
+      "visible_day_before": [],
+      "visible_on_publication_date": [
+        "26465.865"
+      ],
+      "http_before": 200,
+      "http_at": 200,
+      "probe_before": "realtime_end=2023-04-26",
+      "probe_at": "realtime_end=2023-04-27",
+      "verdict": "PASS: 发布日前不可见，发布日当天=首次公布值",
+      "largest_revision": {
+        "date": "2023-01-01",
+        "first_release": "26465.865",
+        "current": "27241.282",
+        "delta": 775.417,
+        "pct": 2.9299
+      }
+    },
+    {
+      "series_id": "PCEPILFE",
+      "observation_date": "2026-07-01",
+      "current_value": "130.148",
+      "errors": [],
+      "http_chain": 200,
+      "chain": [
+        {
+          "realtime_start": "2026-08-26",
+          "value": "130.658"
+        },
+        {
+          "realtime_start": "2026-09-30",
+          "value": "130.133"
+        },
+        {
+          "realtime_start": "2026-10-29",
+          "value": "130.148"
+        }
+      ],
+      "publication_date": "2026-08-26",
+      "first_release_value": "130.658",
+      "visible_day_before": [],
+      "visible_on_publication_date": [
+        "130.658"
+      ],
+      "http_before": 200,
+      "http_at": 200,
+      "probe_before": "realtime_end=2026-08-25",
+      "probe_at": "realtime_end=2026-08-26",
+      "verdict": "PASS: 发布日前不可见，发布日当天=首次公布值",
+      "largest_revision": {
+        "date": "2026-07-01",
+        "first_release": "130.658",
+        "current": "130.148",
+        "delta": -0.51,
+        "pct": -0.3903
+      }
+    }
+  ]
+}
